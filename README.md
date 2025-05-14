@@ -86,3 +86,15 @@ cs2020.run(
 ~~~
 
 The pretraining datase of PocketFlow was choosed from [ZINC 3D](https://zinc.docking.org/tranches/home/). You can download ZINC 3D, and then use make_pretrain_data.py to produce the pretraining dataset.
+
+### Citation
+If you find this work useful, please kindly cite the paper:
+```latex
+@article{
+  title={PocketFlow is a data-and-knowledge-driven structure-based molecular generative model},
+  author={Yuanyuan Jiang, Guo Zhang, Jing You, Hailin Zhang, Rui Yao, Huanzhang Xie, Liyun Zhang, Ziyi Xia, Mengzhe Dai, Yunjie Wu, Linli Li & Shengyong Yang},
+  journal={Nature Machine Intelligence},
+  year={2024},
+  url={https://doi.org/10.1038/s42256-024-00808-8}
+}
+```
