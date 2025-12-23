@@ -180,7 +180,7 @@ class CrossDocked2020:
             data.protein_filename = "/".join(pocket_file.split("/")[-2:])
             data.ligand_filename = "/".join(ligand_file.split("/")[-2:])
             return data
-        except:
+        except Exception:
             return None
 
     def run(

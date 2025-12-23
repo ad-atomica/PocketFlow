@@ -11,7 +11,7 @@ GAUSSIAN_COEF = 1.0 / math.sqrt(2 * math.pi)
 
 class PositionPredictor(Module):
     def __init__(self, in_sca, in_vec, num_filters, n_component, bottleneck=1, use_conv1d=False):
-        super(PositionPredictor, self).__init__()
+        super().__init__()
         self.n_component = n_component
         self.mlp = Sequential(
             GDBPerceptronVN(

@@ -20,7 +20,7 @@ from torch_scatter import scatter_add
 
 
 def count_neighbors(edge_index, symmetry, valence=None, num_nodes=None):
-    assert symmetry == True, "Only support symmetrical edges."
+    assert symmetry, "Only support symmetrical edges."
 
     if num_nodes is None:
         num_nodes = maybe_num_nodes(edge_index)
@@ -129,7 +129,8 @@ def mask_node(data, context_idx, masked_idx, num_atom_type=10, y_pos_std=0.05):
     data.masked_idx = masked_idx
     # masked ligand atom element/feature/pos.
     data.ligand_masked_element = data.ligand_element[masked_idx]
-    # data.ligand_masked_feature = data.ligand_atom_feature[masked_idx]   # For Prediction. these features are chem properties
+    # For Prediction. these features are chemical properties
+    # data.ligand_masked_feature = data.ligand_atom_feature[masked_idx]
     data.ligand_masked_pos = data.ligand_pos[masked_idx]
 
     # context ligand atom elment/full features/pos. Note: num_neigh and num_valence features should be changed
@@ -310,7 +311,10 @@ def sample_edge_with_radius(data, r=4.0):
     # select the atoms whose distance < r between pos_query as edge samples
     edge_index_radius = radius(ligand_context_pos, y_pos, r=r, num_workers=16)
     # get the labels of edge samples
-    mask = [i in masked_idx[0] and j in context_idx[edge_index_radius[1]] for i, j in zip(*ligand_bond_index)]
+    mask = [
+        i in masked_idx[0] and j in context_idx[edge_index_radius[1]]
+        for i, j in zip(*ligand_bond_index, strict=True)
+    ]
     new_idx_1 = torch.nonzero((ligand_bond_index[:, mask][1].view(-1, 1) == context_idx).any(0)).view(-1)
     real_bond_type_in_edge_index_radius = torch.nonzero(
         (new_idx_1.view(-1, 1) == edge_index_radius[1]).any(0)

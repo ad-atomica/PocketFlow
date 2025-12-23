@@ -52,7 +52,7 @@ config = EasyDict(
 
 class PocketFlow(nn.Module):
     def __init__(self, config) -> None:
-        super(PocketFlow, self).__init__()
+        super().__init__()
         self.config = config
         self.num_bond_types = config.num_bond_types
         self.msg_annealing = config.msg_annealing

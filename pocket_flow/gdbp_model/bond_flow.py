@@ -29,7 +29,7 @@ class PositionEncoder(Module):
         use_conv1d=False,
         with_root=True,
     ) -> None:
-        super(PositionEncoder, self).__init__()
+        super().__init__()
         self.message_module = MessageModule(
             in_sca,
             in_vec,
@@ -92,7 +92,7 @@ class BondFlow(Module):
         bottleneck=1,
         use_conv1d=False,
     ):
-        super(BondFlow, self).__init__()
+        super().__init__()
         self.with_root = with_root
         self.num_bond_types = num_bond_types
         self.num_st_layers = num_st_layers

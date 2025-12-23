@@ -44,7 +44,7 @@ def timewait(time_gap):
 
 
 def verify_dir_exists(dirname):
-    if os.path.isdir(os.path.dirname(dirname)) == False:
+    if not os.path.isdir(os.path.dirname(dirname)):
         os.makedirs(os.path.dirname(dirname))
 
 

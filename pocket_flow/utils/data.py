@@ -10,7 +10,7 @@ FOLLOW_BATCH = []  # ['protein_element', 'ligand_context_element', 'pos_real', '
 
 class ComplexData(Data):
     def __init__(self, *args, **kwargs):
-        super(ComplexData, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.is_traj = False
 
     @staticmethod

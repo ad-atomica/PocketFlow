@@ -96,7 +96,9 @@ class RefineData:
             index_changer = -np.ones(len(not_H_ligand), dtype=np.int64)
             index_changer[not_H_ligand] = np.arange(torch.sum(not_H_ligand))
             new_nbh_list = [
-                value for ind_this, value in zip(not_H_ligand, data.ligand_nbh_list.values()) if ind_this
+                value
+                for ind_this, value in zip(not_H_ligand, data.ligand_nbh_list.values(), strict=True)
+                if ind_this
             ]
             data.ligand_nbh_list = {
                 i: [index_changer[node] for node in neigh if node not in index_atom_H]
@@ -106,7 +108,7 @@ class RefineData:
             ind_bond_with_H = np.array(
                 [
                     (bond_i in index_atom_H) | (bond_j in index_atom_H)
-                    for bond_i, bond_j in zip(*data.ligand_bond_index)
+                    for bond_i, bond_j in zip(*data.ligand_bond_index, strict=True)
                 ]
             )
             ind_bond_without_H = ~ind_bond_with_H
@@ -219,7 +221,7 @@ class LigandTrajectory:
             else:
                 perm, edge_index = get_bfs_perm(data.ligand_nbh_list)
         traj = []
-        for ix, i in enumerate(perm):
+        for ix, _i in enumerate(perm):
             data_step = copy.deepcopy(data)
             if ix == 0:
                 out = mask_node(
@@ -436,10 +438,10 @@ class Combine:
             else:
                 perm, edge_index = get_bfs_perm(data.ligand_nbh_list)
         traj = []
-        for ix, i in enumerate(perm):
+        for ix, _i in enumerate(perm):
             data_step = copy.deepcopy(data)
             if ix == 0:
-                if self.lig_only == False:
+                if not self.lig_only:
                     out = mask_node(
                         data_step,
                         torch.empty([0], dtype=torch.long),
@@ -466,9 +468,10 @@ class Combine:
         return traj
 
 
-COLLATE_KEYS = [  #'context_idx', 'masked_idx', 'ligand_masked_element', 'ligand_masked_pos', 'ligand_context_element',
-    #'ligand_context_feature_full', 'ligand_context_pos', 'ligand_context_bond_index', 'ligand_context_bond_type',
-    #'ligand_context_num_neighbors', 'ligand_context_valence', 'ligand_context_num_bonds',
+COLLATE_KEYS = [  #'context_idx', 'masked_idx', 'ligand_masked_element', 'ligand_masked_pos',
+    #'ligand_context_element', 'ligand_context_feature_full', 'ligand_context_pos',
+    #'ligand_context_bond_index', 'ligand_context_bond_type', 'ligand_context_num_neighbors',
+    # 'ligand_context_valence', 'ligand_context_num_bonds',
     "cpx_pos",
     "cpx_feature",
     "idx_ligand_ctx_in_cpx",

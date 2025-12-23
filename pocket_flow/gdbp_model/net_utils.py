@@ -57,7 +57,7 @@ def flow_forward(flow_layers, x_z, feature):
 
 class GaussianSmearing(nn.Module):
     def __init__(self, start=0.0, stop=10.0, num_gaussians=50):
-        super(GaussianSmearing, self).__init__()
+        super().__init__()
         self.stop = stop
         offset = torch.linspace(start, stop, num_gaussians)
         self.coeff = -0.5 / (offset[1] - offset[0]).item() ** 2
@@ -71,7 +71,7 @@ class GaussianSmearing(nn.Module):
 
 class EdgeExpansion(nn.Module):
     def __init__(self, edge_channels):
-        super(EdgeExpansion, self).__init__()
+        super().__init__()
         self.nn = nn.Linear(in_features=1, out_features=edge_channels, bias=False)
 
     def forward(self, edge_vector):
@@ -82,7 +82,7 @@ class EdgeExpansion(nn.Module):
 
 class Scalarize(nn.Module):
     def __init__(self, sca_in_dim, vec_in_dim, hidden_dim, out_dim, act_fn=nn.Sigmoid()) -> None:
-        super(Scalarize, self).__init__()
+        super().__init__()
         self.sca_in_dim = sca_in_dim
         self.vec_in_dim = vec_in_dim
         self.hidden_dim = hidden_dim
@@ -104,7 +104,7 @@ class Scalarize(nn.Module):
 
 class Rescale(nn.Module):
     def __init__(self):
-        super(Rescale, self).__init__()
+        super().__init__()
         self.weight = nn.Parameter(torch.zeros([1]))
 
     def forward(self, x):
@@ -118,7 +118,7 @@ class Rescale(nn.Module):
 
 class AtomEmbedding(nn.Module):
     def __init__(self, in_scalar, in_vector, out_scalar, out_vector, vector_normalizer=20.0):
-        super(AtomEmbedding, self).__init__()
+        super().__init__()
         assert in_vector == 1
         self.in_scalar = in_scalar
         self.vector_normalizer = vector_normalizer

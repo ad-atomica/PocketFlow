@@ -205,7 +205,7 @@ def substructure(mol_lib):
 
 def smoothing(scalars, weight=0.8):  # Weight between 0 and 1
     last = scalars[0]  # First value in the plot (first timestep)
-    smoothed = list()
+    smoothed = []
     for point in scalars:
         smoothed_val = last * weight + (1 - weight) * point  # Calculate smoothed value
         smoothed.append(smoothed_val)  # Save it

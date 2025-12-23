@@ -12,7 +12,7 @@ EPS = 1e-6
 
 class GDBLinear(Module):
     def __init__(self, in_scalar, in_vector, out_scalar, out_vector, bottleneck=(1, 1), use_conv1d=False):
-        super(GDBLinear, self).__init__()
+        super().__init__()
         if isinstance(bottleneck, int):
             sca_bottleneck = bottleneck
             vec_bottleneck = bottleneck
@@ -62,7 +62,7 @@ class GDBLinear(Module):
 
 class GDBPerceptronVN(Module):
     def __init__(self, in_scalar, in_vector, out_scalar, out_vector, bottleneck=1, use_conv1d=False):
-        super(GDBPerceptronVN, self).__init__()
+        super().__init__()
         self.gb_linear = GDBLinear(
             in_scalar, in_vector, out_scalar, out_vector, bottleneck=bottleneck, use_conv1d=use_conv1d
         )
@@ -78,7 +78,7 @@ class GDBPerceptronVN(Module):
 
 class VNLinear(nn.Module):
     def __init__(self, in_channels, out_channels, *args, **kwargs):
-        super(VNLinear, self).__init__()
+        super().__init__()
         self.map_to_feat = nn.Linear(in_channels, out_channels, *args, **kwargs)
 
     def forward(self, x):
@@ -91,8 +91,8 @@ class VNLinear(nn.Module):
 
 class VNLeakyReLU(nn.Module):
     def __init__(self, in_channels, share_nonlinearity=False, negative_slope=0.01):
-        super(VNLeakyReLU, self).__init__()
-        if share_nonlinearity == True:
+        super().__init__()
+        if share_nonlinearity:
             self.map_to_dir = nn.Linear(in_channels, 1, bias=False)
         else:
             self.map_to_dir = nn.Linear(in_channels, in_channels, bias=False)
@@ -114,7 +114,7 @@ class VNLeakyReLU(nn.Module):
 
 class ST_GDBP_Exp(nn.Module):
     def __init__(self, in_scalar, in_vector, out_scalar, out_vector, bottleneck=1, use_conv1d=False):
-        super(ST_GDBP_Exp, self).__init__()
+        super().__init__()
         self.in_scalar = in_scalar
         self.in_vector = in_vector
         self.out_scalar = out_scalar
@@ -147,7 +147,7 @@ class ST_GDBP_Exp(nn.Module):
 
 class MessageAttention(Module):
     def __init__(self, in_sca, in_vec, out_sca, out_vec, bottleneck=1, num_heads=1, use_conv1d=False) -> None:
-        super(MessageAttention, self).__init__()
+        super().__init__()
 
         assert (in_sca % num_heads == 0) and (in_vec % num_heads == 0)
         assert (out_sca % num_heads == 0) and (out_vec % num_heads == 0)
@@ -200,7 +200,7 @@ class MessageModule(nn.Module):
         cutoff=10.0,
         use_conv1d=False,
     ):
-        super(MessageModule, self).__init__()
+        super().__init__()
         hid_sca, hid_vec = edge_sca, edge_vec
         self.cutoff = cutoff
         self.node_gblinear = GDBLinear(
@@ -249,7 +249,7 @@ class AttentionInteractionBlockVN(Module):
         cutoff=10.0,
         use_conv1d=False,
     ):
-        super(AttentionInteractionBlockVN, self).__init__()
+        super().__init__()
         self.num_heads = num_heads
         # edge features
         self.distance_expansion = GaussianSmearing(stop=cutoff, num_gaussians=edge_channels - num_edge_types)
@@ -325,7 +325,7 @@ class AttentionEdges(Module):
     def __init__(
         self, hidden_channels, key_channels, num_heads=1, num_bond_types=3, bottleneck=1, use_conv1d=False
     ):
-        super(AttentionEdges, self).__init__()
+        super().__init__()
 
         assert (hidden_channels[0] % num_heads == 0) and (hidden_channels[1] % num_heads == 0)
         assert (key_channels[0] % num_heads == 0) and (key_channels[1] % num_heads == 0)
@@ -462,7 +462,7 @@ class AttentionBias(Module):
     def __init__(
         self, num_heads, hidden_channels, cutoff=10.0, num_bond_types=3, bottleneck=1, use_conv1d=False
     ):  # TODO: change the cutoff
-        super(AttentionBias, self).__init__()
+        super().__init__()
         num_edge_types = num_bond_types + 1
         self.num_bond_types = num_bond_types
         self.distance_expansion = GaussianSmearing(

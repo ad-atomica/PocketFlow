@@ -237,7 +237,7 @@ class Chain:
 
     @property
     def get_incomplete_residues(self):
-        return [i for i in self.residues.values() if i.is_perfect == False]
+        return [i for i in self.residues.values() if not i.is_perfect]
 
     @property
     def to_heavy_string(self):

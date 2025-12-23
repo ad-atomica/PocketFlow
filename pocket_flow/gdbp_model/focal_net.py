@@ -5,7 +5,7 @@ from .layers import GDBLinear, GDBPerceptronVN
 
 class FocalNet(Module):
     def __init__(self, in_sca, in_vec, hidden_dim_sca, hidden_dim_vec, bottleneck=1, use_conv1d=False):
-        super(FocalNet, self).__init__()
+        super().__init__()
         self.net = Sequential(
             GDBPerceptronVN(
                 in_sca, in_vec, hidden_dim_sca, hidden_dim_vec, bottleneck=bottleneck, use_conv1d=use_conv1d

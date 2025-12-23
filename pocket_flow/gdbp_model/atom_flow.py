@@ -16,7 +16,7 @@ class AtomFlow(nn.Module):
         bottleneck=1,
         use_conv1d=False,
     ) -> None:
-        super(AtomFlow, self).__init__()
+        super().__init__()
 
         self.net = nn.Sequential(
             GDBPerceptronVN(

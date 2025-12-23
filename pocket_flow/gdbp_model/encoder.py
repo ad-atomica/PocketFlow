@@ -18,7 +18,7 @@ class ContextEncoder(nn.Module):
         bottleneck=1,
         use_conv1d=False,
     ):
-        super(ContextEncoder, self).__init__()
+        super().__init__()
         self.hidden_channels = hidden_channels
         self.edge_channels = edge_channels
         self.key_channels = key_channels  # not use
