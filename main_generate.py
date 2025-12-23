@@ -1,9 +1,23 @@
 import argparse
+import os
 import time
 
+import torch
+
 from pocket_flow import Generate, PocketFlow
-from pocket_flow.utils import *
-from pocket_flow.utils import ComplexData, Protein, mask_node
+from pocket_flow.utils.ParseFile import Ligand, Protein
+from pocket_flow.utils.data import ComplexData, torchify_dict
+from pocket_flow.utils.model_io import load_model_from_ckpt
+from pocket_flow.utils.train import timewait
+from pocket_flow.utils.transform import (
+    AtomComposer,
+    FeaturizeLigandAtom,
+    FeaturizeProteinAtom,
+    FocalMaker,
+    LigandCountNeighbors,
+    RefineData,
+)
+from pocket_flow.utils.transform_utils import mask_node
 
 
 def str2bool(v):

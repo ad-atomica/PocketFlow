@@ -1,10 +1,23 @@
+import os
 import time
 
+import torch
 import yaml
 
 from pocket_flow import Generate, PocketFlow
-from pocket_flow.utils import *
-from pocket_flow.utils import ComplexData, Protein, mask_node
+from pocket_flow.utils.ParseFile import Ligand, Protein
+from pocket_flow.utils.data import ComplexData, torchify_dict
+from pocket_flow.utils.model_io import load_model_from_ckpt
+from pocket_flow.utils.train import timewait
+from pocket_flow.utils.transform import (
+    AtomComposer,
+    FeaturizeLigandAtom,
+    FeaturizeProteinAtom,
+    FocalMaker,
+    LigandCountNeighbors,
+    RefineData,
+)
+from pocket_flow.utils.transform_utils import mask_node
 
 
 class Dict(dict):
@@ -166,4 +179,5 @@ para_dict.focus_threshold = 0.5
 para_dict.choose_max = True
 para_dict.with_print = False
 cmd_1 = '\n'.join([make_cmd(para_dict) for _ in range(5)])
-open('gbp_pocket_flow_with_edge/gen_{}.sh'.format(para_dict.name),'w').write(cmd_1)"""
+open('gbp_pocket_flow_with_edge/gen_{}.sh'.format(para_dict.name),'w').write(cmd_1)
+"""
