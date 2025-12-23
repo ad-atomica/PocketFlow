@@ -1,30 +1,46 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
-from .layers import GDBPerceptronVN, GDBLinear, ST_GDBP_Exp
 
+from .layers import GDBLinear, GDBPerceptronVN, ST_GDBP_Exp
 
 
 class AtomFlow(nn.Module):
-    def __init__(self, in_sca, in_vec, hidden_dim_sca, hidden_dim_vec, num_lig_atom_type=10,
-                 num_flow_layers=6, bottleneck=1, use_conv1d=False) -> None:
+    def __init__(
+        self,
+        in_sca,
+        in_vec,
+        hidden_dim_sca,
+        hidden_dim_vec,
+        num_lig_atom_type=10,
+        num_flow_layers=6,
+        bottleneck=1,
+        use_conv1d=False,
+    ) -> None:
         super(AtomFlow, self).__init__()
-        
+
         self.net = nn.Sequential(
             GDBPerceptronVN(
                 in_sca, in_vec, hidden_dim_sca, hidden_dim_vec, bottleneck=bottleneck, use_conv1d=use_conv1d
-                ),
+            ),
             GDBLinear(
-                hidden_dim_sca, hidden_dim_vec, hidden_dim_sca, hidden_dim_vec, bottleneck=bottleneck, 
-                use_conv1d=use_conv1d
-                )
+                hidden_dim_sca,
+                hidden_dim_vec,
+                hidden_dim_sca,
+                hidden_dim_vec,
+                bottleneck=bottleneck,
+                use_conv1d=use_conv1d,
+            ),
         )
-        
+
         self.flow_layers = nn.ModuleList()
         for _ in enumerate(range(num_flow_layers)):
             layer = ST_GDBP_Exp(
-                hidden_dim_sca, hidden_dim_vec, num_lig_atom_type, hidden_dim_vec, bottleneck=bottleneck,
-                use_conv1d=use_conv1d
+                hidden_dim_sca,
+                hidden_dim_vec,
+                num_lig_atom_type,
+                hidden_dim_vec,
+                bottleneck=bottleneck,
+                use_conv1d=use_conv1d,
             )
             self.flow_layers.append(layer)
 

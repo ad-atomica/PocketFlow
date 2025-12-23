@@ -14,7 +14,6 @@ def arguments():
 
 
 def main():
-
     args = arguments()
 
     output_path = f"{Path(args.protein).parent}/pocket.pdb"
@@ -22,9 +21,7 @@ def main():
     pro = Protein(args.protein)
     lig = Ligand(args.ligand)
     dist_cutoff = 10
-    pocket_block, _ = SplitPocket._split_pocket_with_surface_atoms(
-        pro, lig, dist_cutoff
-    )
+    pocket_block, _ = SplitPocket._split_pocket_with_surface_atoms(pro, lig, dist_cutoff)
     open(output_path, "w").write(pocket_block)
 
 

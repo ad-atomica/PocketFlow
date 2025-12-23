@@ -37,6 +37,7 @@ def load_ckpt(
     safe_globals = []
     try:
         from easydict import EasyDict  # imported lazily so this module stays lightweight
+
         safe_globals.append(EasyDict)
     except Exception:
         # If easydict isn't installed, we simply won't allowlist it.

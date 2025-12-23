@@ -1,8 +1,23 @@
 [tools]
 pixi = "0.62.0"
+ruff = "0.14"
+tombi = "0.7"
 
 [tasks]
 # Inference (default env)
 install = "pixi install --locked"
 smoke = "pixi run smoke"
 test-load-ckpt = "pixi run test-load-ckpt"
+check-py = { description = "Check python code with ruff", run = "ruff check . && ruff format --check ." }
+fix-py = { description = "Fix Python code with Ruff", run = "ruff format . && ruff check --fix ." }
+check-toml = { description = "Check TOML files with Tombi linter", run = "tombi lint" }
+fix-toml = { description = "Run Tombi TOML formatter/linter on all TOML files", run = "tombi format" }
+
+[tasks.check-pytype]
+description = "Typecheck python code with basedpyright"
+usage = 'arg "[files]" help="Files or directories to typecheck (default: .)" var=#true default="."'
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+pixi run basedpyright ${usage_files:-.}
+'''
