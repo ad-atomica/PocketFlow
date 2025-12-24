@@ -268,7 +268,7 @@ def remove_triangle(
         dist = torch.norm(pos_to_add.view(-1, 3) - ligand_context_pos[new_j], dim=-1, p=2)
         dist_mask_idx = torch.nonzero(adj_mask).view(-1)
         max_dist_idx_to_remove = dist_mask_idx[dist[dist_mask_idx].argmax()]
-        mask = not (torch.arange(len(bond_type_to_add)) == max_dist_idx_to_remove)
+        mask = torch.arange(len(bond_type_to_add), device=bond_type_to_add.device) != max_dist_idx_to_remove
         bond_index_to_add = bond_index_to_add[:, mask]
         bond_type_to_add = bond_type_to_add[mask]
     return bond_index_to_add, bond_type_to_add
