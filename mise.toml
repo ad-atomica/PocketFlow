@@ -1,5 +1,6 @@
 [tools]
-pixi = "0.62.0"
+python = "3.12"
+pixi = "0.62"
 ruff = "0.14"
 tombi = "0.7"
 
@@ -31,5 +32,6 @@ usage = 'arg "[files]" help="Files or directories to typecheck (default: .)" var
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-pixi run basedpyright ${usage_files:-.}
+# `basedpyright` is installed in the Pixi `lint` env (dev tooling only), not the default runtime env.
+pixi run -e lint basedpyright ${usage_files:-.}
 '''

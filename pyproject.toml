@@ -2,25 +2,20 @@
 name = "pocketflow"
 version = "0.0.0"
 description = "Local runner for PocketFlow"
-requires-python = "~=3.10"
-# Pure-Python deps via PyPI (Pixi installs these with pip).
-# Keep this inference-only; training/visualisation extras go in Pixi features below.
-dependencies = [
-  "easydict==1.10",
-  "imageio==2.33.1",
-  "meeko==0.4.0",
-  "torchdiffeq==0.2.3",
-  "zuko==1.0.1",
-]
+requires-python = "~=3.12"
+
+# Atomica-style note:
+# We keep runtime Python deps under [tool.pixi.pypi-dependencies] instead of [project].dependencies
+# so Pixi is the single source of truth for environments.
+# If you plan to publish/install this as a normal Python package via pip, consider also mirroring
+# these deps back into [project].dependencies for packaging metadata.
 
 [tool.basedpyright]
-pythonVersion = "3.10"
+pythonVersion = "3.12"
 # Tell basedpyright to use the Pixi-managed env instead of guessing .venv
 venvPath = ".pixi/envs"
 venv = "default"
-# What to analyse
 include = ["."]
-# Ignore build artefacts and any stray envs
 exclude = [
   ".pixi",
   ".venv",
@@ -44,23 +39,33 @@ reportUnnecessaryTypeIgnoreComment = "information"
 
 [tool.pixi.workspace]
 name = "pocketflow"
-# Keep channels simple to avoid strict-priority conflicts across PyTorch/PyG stacks.
 channels = ["conda-forge"]
 # PyG stack is not available on linux-aarch64 on conda-forge.
 platforms = ["osx-arm64", "linux-64"]
 
+# -----------------------------
+# Environments
+# -----------------------------
+[tool.pixi.environments]
+# default env = runtime / inference
+default = { features = [], solve-group = "core" }
+# dev env = runtime + dev tooling
+dev = { features = ["dev"], solve-group = "core" }
+# tooling-only env (fast CI for lint/typecheck; does NOT pull torch/rdkit/etc)
+lint = { features = ["dev"], solve-group = "lint", no-default-feature = true }
+
+# -----------------------------
+# Conda packages (native / compiled / big stack)
+# -----------------------------
 [tool.pixi.dependencies]
-python = "3.10.*"
-pip = "*"
-# CLI tooling
-ripgrep = "*"
-basedpyright = "*"
+# `pip` is only needed if you explicitly use the `pip` CLI in tasks/scripts.
+# pip = "*"
+
 # Chem / native stack
 rdkit = "*"
 openbabel = "*"
 # Scientific stack
-# NOTE: Relax numpy pin to avoid blocking modern PyTorch/PyG builds.
-numpy = ">=1.26,<2"
+numpy = "*"
 scipy = "*"
 pandas = "*"
 pyyaml = "*"
@@ -74,12 +79,10 @@ pytorch = "*"
 # PyTorch Geometric stack (explicit)
 # conda-forge package name is `pytorch_geometric`
 pytorch_geometric = "*"
-# Compiled PyG extension libs (these provide torch_scatter/torch_cluster/etc)
 pytorch_scatter = "*"
 pytorch_cluster = "*"
 pytorch_sparse = "*"
 pytorch_spline_conv = "*"
-# Optional acceleration library for PyG (kept in default env; remove if it causes trouble)
 "pyg-lib" = "*"
 # Pocket splitting
 pymol-open-source = "*"
@@ -87,21 +90,46 @@ pymol-open-source = "*"
 tensorboard = "*"
 
 # -----------------------------
-# Environments
+# PyPI packages (runtime)
 # -----------------------------
-[tool.pixi.environments]
-# default env = inference only
-default = { features = [], solve-group = "core" }
+[tool.pixi.pypi-dependencies]
+# Looser “compatibility” constraints; the lockfile pins exact builds for reproducibility.
+easydict = ">=1.10,<2"
+imageio = ">=2.33.1,<3"
+meeko = ">=0.4.0,<0.5"
+torchdiffeq = ">=0.2.3,<0.3"
+zuko = ">=1.0.1,<2"
 
+# -----------------------------
+# Features
+# -----------------------------
+[tool.pixi.feature.dev.dependencies]
+python = "~=3.12"
+ripgrep = "*"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+# Python tooling via PyPI
+basedpyright = "*"
+
+# -----------------------------
+# Tasks
+# -----------------------------
 [tool.pixi.tasks]
+# Runtime (default env)
 smoke = "python -c \"import torch, torch_geometric; print('torch', torch.__version__); print('pyg', torch_geometric.__version__)\""
-# Inspect checkpoint using weights_only=True (allowlisting EasyDict).
 inspect-ckpt = "python scripts/inspect_ckpt.py ckpt/ZINC-pretrained-255000.pt"
 test-load-ckpt = "python scripts/test_load_ckpt.py"
+# Dev/tooling tasks (recommended: run with `pixi run -e lint ...` or `pixi run -e dev ...`)
+check-py = "ruff check . && ruff format --check ."
+fix-py = "ruff format . && ruff check --fix ."
+check-toml = "tombi lint"
+fix-toml = "tombi format"
+check-pytype = "basedpyright ."
+check = "ruff check . && ruff format --check . && tombi lint && basedpyright ."
 
 [tool.ruff]
 line-length = 110
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
