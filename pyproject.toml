@@ -58,9 +58,6 @@ lint = { features = ["dev"], solve-group = "lint", no-default-feature = true }
 # Conda packages (native / compiled / big stack)
 # -----------------------------
 [tool.pixi.dependencies]
-# `pip` is only needed if you explicitly use the `pip` CLI in tasks/scripts.
-# pip = "*"
-
 # Chem / native stack
 rdkit = "*"
 openbabel = "*"
