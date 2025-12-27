@@ -107,9 +107,9 @@ class VNLeakyReLU(Module):
         d = self.map_to_dir(x.transpose(-2, -1)).transpose(-2, -1)
         dotprod = (x * d).sum(-1, keepdim=True)
         mask = (dotprod >= 0).to(x.dtype)
-        d_norm_sq = (d * d).sum(-1, keepdim=True)
+        d_norm_sq = (d * d).sum(-1, keepdim=True).clamp_min(EPS)
         x_out = self.negative_slope * x + (1 - self.negative_slope) * (
-            mask * x + (1 - mask) * (x - (dotprod / (d_norm_sq + EPS)) * d)
+            mask * x + (1 - mask) * (x - (dotprod / d_norm_sq) * d)
         )
         return x_out
 
