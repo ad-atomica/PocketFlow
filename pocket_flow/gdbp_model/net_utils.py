@@ -224,8 +224,14 @@ class EdgeExpansion(nn.Module):
         Returns:
             Tensor of shape `(N_edges, edge_channels, 3)`.
         """
-        edge_vector = edge_vector / (torch.norm(edge_vector, p=2, dim=1, keepdim=True) + 1e-7)
-        expansion = self.nn(edge_vector.unsqueeze(-1)).transpose(1, -1)
+        # If two points coincide, direction is undefined; emit a zero direction
+        # rather than a noisy, potentially destabilising unit vector.
+        EPS = 1e-7
+        norm = torch.norm(edge_vector, p=2, dim=1, keepdim=True)
+        safe_norm = norm.clamp_min(EPS)
+        edge_unit = edge_vector / safe_norm
+        edge_unit = torch.where(norm < EPS, torch.zeros_like(edge_unit), edge_unit)
+        expansion = self.nn(edge_unit.unsqueeze(-1)).transpose(1, -1)
         return expansion
 
 
@@ -390,7 +396,9 @@ class AtomEmbedding(nn.Module):
         if isinstance(self.vector_normalizer, float):
             vector_input = vector_input / self.vector_normalizer
         else:
-            vector_input = vector_input / torch.norm(vector_input, p=2, dim=-1)
+            # Norm-based normalisation: clamp to avoid division by zero.
+            denom = torch.norm(vector_input, p=2, dim=-1, keepdim=True).clamp_min(1e-16)
+            vector_input = vector_input / denom
         assert vector_input.shape[1:] == (3,), "Not support. Only one vector can be input"
         sca_emb = self.emb_sca(scalar_input[:, : self.in_scalar])  # b, f -> b, f'
         vec_emb = vector_input.unsqueeze(-1)  # b, 3 -> b, 3, 1

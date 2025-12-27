@@ -356,15 +356,21 @@ class PocketFlow(nn.Module):
             annealing=self.msg_annealing,
         )
         # for focal loss
-        focal_pred: Tensor = self.focal_net(h_cpx, data.idx_ligand_ctx_in_cpx)
-        focal_loss: Tensor = F.binary_cross_entropy_with_logits(
-            input=focal_pred, target=data.ligand_frontier.view(-1, 1).float()
-        )
+        if data.idx_ligand_ctx_in_cpx.numel() == 0:
+            focal_loss = torch.zeros((), device=h_cpx[0].device, dtype=h_cpx[0].dtype)
+        else:
+            focal_pred: Tensor = self.focal_net(h_cpx, data.idx_ligand_ctx_in_cpx)
+            focal_loss: Tensor = F.binary_cross_entropy_with_logits(
+                input=focal_pred, target=data.ligand_frontier.view(-1, 1).float()
+            )
         # for focal loss in protein
-        focal_pred_apo: Tensor = self.focal_net(h_cpx, data.apo_protein_idx)
-        surf_loss: Tensor = F.binary_cross_entropy_with_logits(
-            input=focal_pred_apo, target=data.candidate_focal_label_in_protein.view(-1, 1).float()
-        )
+        if data.apo_protein_idx.numel() == 0:
+            surf_loss = torch.zeros((), device=h_cpx[0].device, dtype=h_cpx[0].dtype)
+        else:
+            focal_pred_apo: Tensor = self.focal_net(h_cpx, data.apo_protein_idx)
+            surf_loss: Tensor = F.binary_cross_entropy_with_logits(
+                input=focal_pred_apo, target=data.candidate_focal_label_in_protein.view(-1, 1).float()
+            )
         # for atom loss
         x_z: Tensor = F.one_hot(data.atom_label, num_classes=self.config.num_atom_type).float()
         x_z = x_z + self.config.deq_coeff * torch.rand(x_z.size(), device=x_z.device)

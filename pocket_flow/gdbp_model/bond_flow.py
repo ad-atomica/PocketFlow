@@ -237,7 +237,7 @@ class BondFlow(Module):
             edge_channels,
             num_filters,
             cutoff=cutoff,
-            # num_heads=num_heads,  # TODO: this was not used in the original code, but should it be ?
+            # num_heads=num_heads,  # TODO: include during train; incorrectly not used in original code.
             bottleneck=bottleneck,
             use_conv1d=use_conv1d,
         )
