@@ -1,0 +1,11 @@
+{
+  "include": ["."],
+  "exclude": [".pixi", ".venv", "**/__pycache__", "**/node_modules", "client"],
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "none",
+  "pythonVersion": "3.12",
+  "venvPath": ".pixi/envs",
+  "venv": "default",
+  "reportMissingImports": "none",
+  "reportMissingTypeStubs": "none"
+}
