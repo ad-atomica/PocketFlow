@@ -29,9 +29,7 @@ from pocket_flow.gdbp_model.layers import (
     ST_GDBP_Exp,
 )
 from pocket_flow.gdbp_model.net_utils import EdgeExpansion, GaussianSmearing
-
-# Type alias for scalar/vector feature tuple: (scalar: [N, F_sca], vector: [N, F_vec, 3])
-type ScalarVectorFeatures = tuple[Tensor, Tensor]
+from pocket_flow.gdbp_model.types import ScalarVectorFeatures
 
 
 def _has_edges(edge_index: Tensor) -> bool:

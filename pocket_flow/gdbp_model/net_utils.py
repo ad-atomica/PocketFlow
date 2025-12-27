@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn.modules.loss import _WeightedLoss
 
-keys: list[str] = [
+KEYS: list[str] = [
     "edge_flow.flow_layers.5",
     "atom_flow.flow_layers.5",
     "pos_predictor.mu_net",
