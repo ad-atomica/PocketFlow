@@ -1,15 +1,10 @@
-import os
 from multiprocessing import Pool
 
 import numpy as np
 
+from .file_utils import verify_dir_exists
 from .ParseFile import Ligand, Protein
 from .residues_base import RESIDUES_TOPO
-
-
-def verify_dir_exists(dirname):
-    if not os.path.isdir(os.path.dirname(dirname)):
-        os.makedirs(os.path.dirname(dirname))
 
 
 def ComputeDistMat(m1, m2):

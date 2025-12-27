@@ -1,4 +1,3 @@
-import os
 import time
 
 import torch
@@ -8,6 +7,8 @@ from torch.cuda import amp
 from torch.nn.utils import clip_grad_norm_
 from torch.utils import tensorboard
 from torch_geometric.loader import DataLoader
+
+from .file_utils import verify_dir_exists
 
 
 def inf_iterator(iterable):
@@ -41,11 +42,6 @@ def timewait(time_gap):
     else:
         out = f"{round(s, 2)}s"
     return out
-
-
-def verify_dir_exists(dirname):
-    if not os.path.isdir(os.path.dirname(dirname)):
-        os.makedirs(os.path.dirname(dirname))
 
 
 class Experiment:

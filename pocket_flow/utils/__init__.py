@@ -1,4 +1,5 @@
 from .data import ComplexData, torchify_dict
+from .file_utils import verify_dir_exists
 from .generate_utils import (
     add_ligand_atom_to_data,
     check_alert_structures,
@@ -10,7 +11,7 @@ from .load_dataset import LoadDataset
 from .metrics import substructure
 from .model_io import load_model_from_ckpt
 from .ParseFile import is_in_ring
-from .train import Experiment, verify_dir_exists
+from .train import Experiment
 from .transform_utils import get_tri_edges
 
 __all__ = [

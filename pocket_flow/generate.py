@@ -5,6 +5,7 @@ from rdkit import Chem, RDLogger
 from torch_geometric.nn import knn, radius
 
 from .gdbp_model import embed_compose
+from .utils.file_utils import verify_dir_exists
 from .utils.generate_utils import (
     add_ligand_atom_to_data,
     check_alert_structures,
@@ -13,7 +14,6 @@ from .utils.generate_utils import (
     modify,
 )
 from .utils.metrics import substructure
-from .utils.train import verify_dir_exists
 from .utils.transform_utils import get_tri_edges
 
 RDLogger.DisableLog("rdApp.*")
