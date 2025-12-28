@@ -33,12 +33,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Data
 from torch_geometric.nn import knn, radius
 from torch_geometric.nn.pool import knn_graph, radius_graph
 from torch_geometric.utils import subgraph
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 from torch_scatter import scatter_add
+
+from pocket_flow.utils.data import ComplexData
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -270,12 +271,12 @@ def get_bfs_perm(
 
 
 def mask_node(
-    data: Data,
+    data: ComplexData,
     context_idx: torch.Tensor,
     masked_idx: torch.Tensor,
     num_atom_type: int = 10,
     y_pos_std: float = 0.05,
-) -> Data:
+) -> ComplexData:
     """Split ligand atoms into context vs. masked sets for one generation step.
 
     This helper is used to build an autoregressive training trajectory. It
@@ -388,13 +389,13 @@ def mask_node(
 
 
 def make_pos_label(
-    data: Data,
+    data: ComplexData,
     num_real_pos: int = 5,
     num_fake_pos: int = 5,
     pos_real_std: float = 0.05,
     pos_fake_std: float = 2.0,
     k: int = 16,
-) -> Data:
+) -> ComplexData:
     """Sample real/fake query positions and build kNN edges to the composed graph.
 
     This is used for position scoring objectives: ``pos_real`` are sampled near
@@ -478,14 +479,14 @@ def make_pos_label(
 
 
 def get_complex_graph(
-    data: Data,
+    data: ComplexData,
     len_ligand_ctx: int,
     len_compose: int,
     num_workers: int = 1,
     graph_type: GraphType = GraphType.KNN,
     knn: int = 16,
     radius: float = 10.0,
-) -> Data:
+) -> ComplexData:
     """Build a composed kNN graph and annotate edges that are true ligand bonds.
 
     The composed node set is expected to be ordered as:
@@ -603,12 +604,12 @@ def get_knn_graph(
 
 
 def get_complex_graph_(
-    data: Data,
+    data: ComplexData,
     knn: int = 16,
     num_workers: int = 8,
     graph_type: GraphType = GraphType.KNN,
     radius: float = 5.5,
-) -> Data:
+) -> ComplexData:
     """Build a composed graph with ligand and protein bond annotations.
 
     This constructs a kNN/radius graph on ``data.cpx_pos`` and annotates each
@@ -656,7 +657,7 @@ def get_complex_graph_(
     return data
 
 
-def sample_edge_with_radius(data: Data, r: float = 4.0) -> Data:
+def sample_edge_with_radius(data: ComplexData, r: float = 4.0) -> ComplexData:
     """Construct query→context edges within a radius and label true ligand bonds.
 
     This helper builds a set of edges between the current query position
