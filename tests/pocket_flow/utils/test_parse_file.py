@@ -11,7 +11,7 @@ from numpy.testing import assert_allclose
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
-from pocket_flow.utils.ParseFile import (
+from pocket_flow.utils.parse_file import (
     AMINO_ACID_TYPE,
     ATOM_FAMILIES,
     BACKBONE_SYMBOL,
