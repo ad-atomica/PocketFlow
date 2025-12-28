@@ -58,9 +58,9 @@ class RingSizeStats(TypedDict):
             :data:`PATTERNS` or :data:`FUSED_QUA_RING_PATTERN`.
         unexpected_ring: Molecules matching any of the "unexpected ring" SMARTS
             patterns in :data:`PATTERNS_1`.
-        sssr: Mapping from RDKit's `SSSR` ring count (as returned by
-            `Chem.GetSSSR`) to a :class:`RingCountEntry` describing how many
-            molecules had that SSSR value.
+        sssr: Mapping from RDKit's `SSSR` ring count (computed as
+            `len(Chem.GetSSSR(mol))`) to a :class:`RingCountEntry` describing
+            how many molecules had that SSSR value.
     """
 
     tri_ring: RingCountEntry
@@ -241,7 +241,7 @@ def substructure(mol_lib: Sequence[Sequence[Mol | None]]) -> RingSizeStats:
     how many rings of that size it contains.
 
     The function also returns a histogram over RDKit's `SSSR` ring count
-    (`Chem.GetSSSR`).
+    (computed as `len(Chem.GetSSSR(mol))`).
 
     Notes:
         - `total_num` is computed as the sum of the lengths of the nested
@@ -282,7 +282,7 @@ def substructure(mol_lib: Sequence[Sequence[Mol | None]]) -> RingSizeStats:
             mol = Chem.MolFromSmiles(Chem.MolToSmiles(mol, isomericSmiles=False))
             if mol is None:
                 continue
-            sssr = Chem.GetSSSR(mol)
+            sssr = len(Chem.GetSSSR(mol))
             if sssr in sssr_dict:
                 sssr_dict[sssr]["num"] += 1
             else:
@@ -324,6 +324,7 @@ def substructure(mol_lib: Sequence[Sequence[Mol | None]]) -> RingSizeStats:
                 has_fused_ring = True
                 fused_ring["num"] += 1
             if judge_unexpected_ring(mol) and not has_unexpected_ring:
+                has_unexpected_ring = True
                 unexpected_ring["num"] += 1
 
     tri_ring["rate"] = tri_ring["num"] / total_num
