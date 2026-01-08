@@ -16,6 +16,9 @@ edge labels, and auxiliary kNN/radius edges). Shape conventions follow PyG:
   :func:`torch_geometric.nn.radius`, the returned index tensor uses
   ``edge_index[0]`` for indices into the query set (``y``) and ``edge_index[1]``
   for indices into the reference set (``x``).
+  When these edges are used for message passing from the reference set to the
+  query set, this code swaps the returned rows to maintain the source→target
+  ordering.
 
 Randomness:
     Several functions sample random starting nodes or random positions (NumPy
@@ -33,13 +36,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import knn, radius
-from torch_geometric.nn.pool import knn_graph, radius_graph
+from torch_geometric.utils import scatter as pyg_scatter
 from torch_geometric.utils import subgraph
 from torch_geometric.utils.num_nodes import maybe_num_nodes
-from torch_scatter import scatter_add
 
-from pocket_flow.utils.data import ComplexData
+from pocket_flow.utils.data import ComplexData, LigandRingInfo, NeighborList
+from pocket_flow.utils.neighbor_search import knn, knn_graph, radius, radius_graph
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -60,7 +62,7 @@ def count_neighbors(
 ) -> torch.Tensor:
     """Count per-node neighbors (or weighted neighbor sums) from an edge list.
 
-    This is a lightweight wrapper around :func:`torch_scatter.scatter_add`.
+    This is a lightweight wrapper around :func:`torch_geometric.utils.scatter`.
     The implementation assumes *symmetrical* (undirected) edges where both
     directions are explicitly present in ``edge_index``.
 
@@ -86,7 +88,7 @@ def count_neighbors(
     if valence is None:
         valence = torch.ones([edge_index.size(1)], device=edge_index.device)
     valence = valence.view(edge_index.size(1))
-    return scatter_add(valence, index=edge_index[0], dim=0, dim_size=num_nodes).long()
+    return pyg_scatter(valence, edge_index[0], dim=0, dim_size=num_nodes, reduce="sum").long()
 
 
 def change_features_of_neigh(
@@ -133,8 +135,8 @@ def change_features_of_neigh(
 
 
 def get_rfs_perm(
-    nbh_list: dict[int, list[int]],
-    ring_info: torch.Tensor,
+    nbh_list: NeighborList,
+    ring_info: LigandRingInfo,
 ) -> tuple[torch.Tensor, list[list[tuple[int, int]]]]:
     """Generate a "ring-first" traversal permutation over a molecular graph.
 
@@ -216,7 +218,7 @@ def get_rfs_perm(
 
 
 def get_bfs_perm(
-    nbh_list: dict[int, list[int]],
+    nbh_list: NeighborList,
 ) -> tuple[torch.Tensor, list[list[tuple[int, int]]]]:
     """Generate a randomized BFS permutation over a molecular adjacency list.
 
@@ -395,6 +397,8 @@ def make_pos_label(
     pos_real_std: float = 0.05,
     pos_fake_std: float = 2.0,
     k: int = 16,
+    *,
+    num_workers: int,
 ) -> ComplexData:
     """Sample real/fake query positions and build kNN edges to the composed graph.
 
@@ -418,10 +422,11 @@ def make_pos_label(
         - ``pos_fake`` / ``pos_real``: sampled positions, shapes
           ``(num_fake_pos, 3)`` and ``(num_real_pos, 3)``.
         - ``pos_fake_knn_edge_idx_0`` / ``pos_fake_knn_edge_idx_1``:
-          kNN edges from ``pos_fake`` to ``cpx_pos``; the first index vector
-          refers to ``pos_fake`` rows and the second refers to ``cpx_pos`` rows.
+          kNN edges from ``cpx_pos`` (source) to ``pos_fake`` (target); the
+          first index vector refers to ``cpx_pos`` rows and the second refers to
+          ``pos_fake`` rows.
         - ``pos_real_knn_edge_idx_0`` / ``pos_real_knn_edge_idx_1``:
-          analogous edges for ``pos_real``.
+          analogous edges from ``cpx_pos`` to ``pos_real``.
 
     Args:
         data: PyG data object to mutate.
@@ -430,6 +435,7 @@ def make_pos_label(
         pos_real_std: Noise scale for real samples.
         pos_fake_std: Noise scale for fake samples.
         k: Number of nearest neighbors in kNN edges.
+        num_workers: Worker count for PyG neighbor search.
 
     Returns:
         The mutated ``data`` object.
@@ -469,12 +475,18 @@ def make_pos_label(
         pos_real = torch.cat([pos_real, data.y_pos], dim=0)
 
     data.pos_fake = pos_fake
-    pos_fake_knn_edge_idx = knn(x=data.cpx_pos, y=pos_fake, k=k, num_workers=16)
-    data.pos_fake_knn_edge_idx_0, data.pos_fake_knn_edge_idx_1 = pos_fake_knn_edge_idx
+    pos_fake_knn_edge_idx = knn(x=data.cpx_pos, y=pos_fake, k=k, num_workers=num_workers)
+    data.pos_fake_knn_edge_idx_0, data.pos_fake_knn_edge_idx_1 = (
+        pos_fake_knn_edge_idx[1],
+        pos_fake_knn_edge_idx[0],
+    )
 
     data.pos_real = pos_real
-    pos_real_knn_edge_idx = knn(x=data.cpx_pos, y=pos_real, k=k, num_workers=16)
-    data.pos_real_knn_edge_idx_0, data.pos_real_knn_edge_idx_1 = pos_real_knn_edge_idx
+    pos_real_knn_edge_idx = knn(x=data.cpx_pos, y=pos_real, k=k, num_workers=num_workers)
+    data.pos_real_knn_edge_idx_0, data.pos_real_knn_edge_idx_1 = (
+        pos_real_knn_edge_idx[1],
+        pos_real_knn_edge_idx[0],
+    )
     return data
 
 
@@ -482,7 +494,7 @@ def get_complex_graph(
     data: ComplexData,
     len_ligand_ctx: int,
     len_compose: int,
-    num_workers: int = 1,
+    num_workers: int,
     graph_type: GraphType = GraphType.KNN,
     knn: int = 16,
     radius: float = 10.0,
@@ -527,31 +539,28 @@ def get_complex_graph(
     Returns:
         The mutated ``data`` object.
     """
-    data.cpx_edge_index = knn_graph(data.cpx_pos, knn, flow="target_to_source", num_workers=num_workers)
-    # compose_knn_edge_index
-    id_cpx_edge: torch.Tensor = (
-        data.cpx_edge_index[0, : len_ligand_ctx * knn] * len_compose
-        + data.cpx_edge_index[1, : len_ligand_ctx * knn]
+    data.cpx_edge_index = knn_graph(
+        data.cpx_pos,
+        knn,
+        flow="source_to_target",
+        num_workers=num_workers,
     )
-    id_ligand_ctx_edge: torch.Tensor = (
-        data.ligand_context_bond_index[0] * len_compose + data.ligand_context_bond_index[1]
-    )
-    idx_edge_list: list[torch.Tensor] = [torch.nonzero(id_cpx_edge == id_) for id_ in id_ligand_ctx_edge]
-    idx_edge = torch.tensor(
-        [a.squeeze() if len(a) > 0 else torch.tensor(-1) for a in idx_edge_list], dtype=torch.long
-    )
-    data.cpx_edge_type = torch.zeros(len(data.cpx_edge_index[0]), dtype=torch.long)
-    data.cpx_edge_type[idx_edge[idx_edge >= 0]] = data.ligand_context_bond_type[idx_edge >= 0]
-    data.cpx_edge_feature = torch.cat(
-        [
-            torch.ones([len(data.cpx_edge_index[0]), 1], dtype=torch.long),
-            torch.zeros([len(data.cpx_edge_index[0]), 3], dtype=torch.long),
-        ],
-        dim=-1,
-    )
-    data.cpx_edge_feature[idx_edge[idx_edge >= 0]] = F.one_hot(
-        data.ligand_context_bond_type[idx_edge >= 0], num_classes=4
-    )  # 0 (1,2,3)-onehot
+
+    id_cpx_edge = data.cpx_edge_index[0] * len_compose + data.cpx_edge_index[1]
+    bond_id = data.ligand_context_bond_index[0] * len_compose + data.ligand_context_bond_index[1]
+
+    data.cpx_edge_type = torch.zeros(data.cpx_edge_index.size(1), dtype=torch.long)
+    if bond_id.numel() > 0:
+        perm = bond_id.argsort()
+        bond_id_sorted = bond_id[perm]
+        bond_type_sorted = data.ligand_context_bond_type[perm]
+        idx = torch.searchsorted(bond_id_sorted, id_cpx_edge)
+        valid = idx < bond_id_sorted.numel()
+        idx = idx.clamp_max(bond_id_sorted.numel() - 1)
+        match = valid & (bond_id_sorted[idx] == id_cpx_edge)
+        data.cpx_edge_type[match] = bond_type_sorted[idx[match]]
+
+    data.cpx_edge_feature = F.one_hot(data.cpx_edge_type, num_classes=4).long()
     return data
 
 
@@ -560,7 +569,8 @@ def get_knn_graph(
     k: int = 16,
     edge_feat: torch.Tensor | None = None,
     edge_feat_index: torch.Tensor | None = None,
-    num_workers: int = 8,
+    *,
+    num_workers: int,
     graph_type: GraphType = GraphType.KNN,
     radius: float = 5.5,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -589,9 +599,9 @@ def get_knn_graph(
     """
     cpx_edge_index: torch.Tensor
     if graph_type == GraphType.RAD:
-        cpx_edge_index = radius_graph(pos, radius, flow="target_to_source", num_workers=num_workers)
+        cpx_edge_index = radius_graph(pos, radius, flow="source_to_target", num_workers=num_workers)
     else:  # graph_type == GraphType.KNN
-        cpx_edge_index = knn_graph(pos, k, flow="target_to_source", num_workers=num_workers).long()
+        cpx_edge_index = knn_graph(pos, k, flow="source_to_target", num_workers=num_workers).long()
 
     cpx_edge_type: torch.Tensor | None
     if isinstance(edge_feat, torch.Tensor) and isinstance(edge_feat_index, torch.Tensor):
@@ -606,7 +616,8 @@ def get_knn_graph(
 def get_complex_graph_(
     data: ComplexData,
     knn: int = 16,
-    num_workers: int = 8,
+    *,
+    num_workers: int,
     graph_type: GraphType = GraphType.KNN,
     radius: float = 5.5,
 ) -> ComplexData:
@@ -657,7 +668,7 @@ def get_complex_graph_(
     return data
 
 
-def sample_edge_with_radius(data: ComplexData, r: float = 4.0) -> ComplexData:
+def sample_edge_with_radius(data: ComplexData, r: float = 4.0, *, num_workers: int) -> ComplexData:
     """Construct query→context edges within a radius and label true ligand bonds.
 
     This helper builds a set of edges between the current query position
@@ -678,13 +689,14 @@ def sample_edge_with_radius(data: ComplexData, r: float = 4.0) -> ComplexData:
     Added attributes:
         - ``edge_query_index_0`` / ``edge_query_index_1``: edge indices where
           ``edge_query_index_0`` indexes query positions (``y_pos`` rows) and
-          ``edge_query_index_1`` indexes context atoms (which align with composed
-          indices because ligand-context nodes are first in the composed order).
+          ``edge_query_index_1`` indexes composed atoms (rows of ``cpx_pos``),
+          obtained by mapping ctx indices through ``idx_ligand_ctx_in_cpx``.
         - ``edge_label``: integer bond-type labels for each queried edge.
 
     Args:
         data: PyG data object to mutate.
         r: Radius cutoff for candidate edges.
+        num_workers: Worker count for PyG neighbor search.
 
     Returns:
         The mutated ``data`` object.
@@ -695,8 +707,10 @@ def sample_edge_with_radius(data: ComplexData, r: float = 4.0) -> ComplexData:
     masked_idx: torch.Tensor = data.masked_idx
     ligand_bond_index: torch.Tensor = data.ligand_bond_index
     ligand_bond_type: torch.Tensor = data.ligand_bond_type
+    idx_ctx_in_cpx: torch.Tensor = data.idx_ligand_ctx_in_cpx
+    assert idx_ctx_in_cpx.numel() == ligand_context_pos.size(0)
     # select the atoms whose distance < r between pos_query as edge samples
-    edge_index_radius: torch.Tensor = radius(ligand_context_pos, y_pos, r=r, num_workers=16)
+    edge_index_radius: torch.Tensor = radius(ligand_context_pos, y_pos, r=r, num_workers=num_workers)
     # get the labels of edge samples
     # Vectorized membership checks: check if bond edges connect masked_idx[0] to context nodes within radius
     context_nodes_in_radius = context_idx[edge_index_radius[1]]
@@ -710,15 +724,16 @@ def sample_edge_with_radius(data: ComplexData, r: float = 4.0) -> ComplexData:
     ).view(-1)
     edge_label = torch.zeros(edge_index_radius.size(1), dtype=torch.long)
     edge_label[real_bond_type_in_edge_index_radius] = ligand_bond_type[mask]
-    data.edge_query_index_0, data.edge_query_index_1 = edge_index_radius
+    data.edge_query_index_0 = edge_index_radius[0]
+    data.edge_query_index_1 = idx_ctx_in_cpx[edge_index_radius[1]]
     data.edge_label = edge_label
     return data
 
 
 def get_tri_edges(
-    edge_index_query: torch.Tensor,
+    edge_index_query_ctx: torch.Tensor,
     pos_query: torch.Tensor,
-    idx_ligand: torch.Tensor,
+    idx_ligand_ctx_in_cpx: torch.Tensor,
     ligand_bond_index: torch.Tensor,
     ligand_bond_type: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -745,13 +760,13 @@ def get_tri_edges(
         it), this enumerates ``d²`` pairs. Total work is ``Σ d_i²``.
 
     Args:
-        edge_index_query: Query→context edge index of shape ``(2, E_query)``,
-            where ``edge_index_query[0]`` indexes query nodes (rows of
-            ``pos_query``) and ``edge_index_query[1]`` indexes context nodes.
+        edge_index_query_ctx: Query→context edge index of shape ``(2, E_query)``,
+            where ``edge_index_query_ctx[0]`` indexes query nodes (rows of
+            ``pos_query``) and ``edge_index_query_ctx[1]`` indexes ctx nodes.
         pos_query: Query positions, shape ``(N_query, 3)``. Used for device
             placement only.
-        idx_ligand: Tensor used only for determining the number of context nodes
-            ``N_ctx = len(idx_ligand)``.
+        idx_ligand_ctx_in_cpx: Mapping from ctx indices to composed indices.
+            Used for ``N_ctx`` and for mapping triangle endpoints to cpx space.
         ligand_bond_index: Context bond edge index, shape ``(2, E_ctx)`` with
             indices in ``0..N_ctx-1``.
         ligand_bond_type: Context bond types, shape ``(E_ctx,)`` with values in
@@ -761,10 +776,11 @@ def get_tri_edges(
         A tuple ``(index_real_cps_edge_for_atten, tri_edge_index, tri_edge_feat)``:
           - ``index_real_cps_edge_for_atten``: stacked indices into the queried
             edge list, shape ``(2, E_att)``.
-          - ``tri_edge_index``: stacked context-node pairs, shape ``(2, E_att)``.
+          - ``tri_edge_index``: stacked composed-node pairs in source→target order,
+            shape ``(2, E_att)``.
           - ``tri_edge_feat``: one-hot relation features, shape ``(E_att, 5)``.
     """
-    row, col = edge_index_query
+    row, col_ctx = edge_index_query_ctx
     acc_num_edges = 0
     index_real_cps_edge_i_list: list[torch.Tensor] = []
     index_real_cps_edge_j_list: list[torch.Tensor] = []
@@ -779,13 +795,13 @@ def get_tri_edges(
     index_real_cps_edge_i = torch.cat(index_real_cps_edge_i_list, dim=0).to(pos_query.device)
     index_real_cps_edge_j = torch.cat(index_real_cps_edge_j_list, dim=0).to(pos_query.device)
 
-    node_a_cps_tri_edge = col[index_real_cps_edge_i]
-    node_b_cps_tri_edge = col[index_real_cps_edge_j]
-    n_context = len(idx_ligand)
+    node_a_ctx = col_ctx[index_real_cps_edge_i]
+    node_b_ctx = col_ctx[index_real_cps_edge_j]
+    n_context = int(idx_ligand_ctx_in_cpx.numel())
     adj_mat = torch.zeros([n_context, n_context], dtype=torch.long) - torch.eye(n_context, dtype=torch.long)
     adj_mat = adj_mat.to(ligand_bond_index.device)
     adj_mat[ligand_bond_index[0], ligand_bond_index[1]] = ligand_bond_type
-    tri_edge_type = adj_mat[node_a_cps_tri_edge, node_b_cps_tri_edge]
+    tri_edge_type = adj_mat[node_b_ctx, node_a_ctx]
     tri_edge_feat = (
         tri_edge_type.view([-1, 1]) == torch.tensor([[-1, 0, 1, 2, 3]]).to(tri_edge_type.device)
     ).long()
@@ -799,8 +815,8 @@ def get_tri_edges(
     )
     tri_edge_index = torch.stack(
         [
-            node_a_cps_tri_edge,
-            node_b_cps_tri_edge,
+            idx_ligand_ctx_in_cpx[node_b_ctx],
+            idx_ligand_ctx_in_cpx[node_a_ctx],
         ],
         dim=0,
     )

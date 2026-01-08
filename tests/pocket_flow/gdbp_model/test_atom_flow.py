@@ -17,8 +17,8 @@ class TestAtomFlow(unittest.TestCase):
 
     def test_round_trip_and_empty_focal_behavior(self) -> None:
         """Check empty-focal behavior and forward/reverse consistency."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
@@ -33,6 +33,7 @@ class TestAtomFlow(unittest.TestCase):
             in_vec=in_vec,
             hidden_dim_sca=hidden_sca,
             hidden_dim_vec=hidden_vec,
+            bottleneck=(1, 1),
             num_lig_atom_type=k,
             num_flow_layers=3,
         )

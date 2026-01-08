@@ -4,6 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from pocket_flow.gdbp_model.layers import GDBLinear, GDBPerceptronVN, ST_GDBP_Exp
+from pocket_flow.gdbp_model.types import BottleneckSpec
 
 
 class AtomFlow(nn.Module):
@@ -39,9 +40,9 @@ class AtomFlow(nn.Module):
         in_vec: int,
         hidden_dim_sca: int,
         hidden_dim_vec: int,
-        num_lig_atom_type: int = 10,
-        num_flow_layers: int = 6,
-        bottleneck: int = 1,
+        num_lig_atom_type: int,
+        num_flow_layers: int,
+        bottleneck: BottleneckSpec,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -80,18 +81,16 @@ class AtomFlow(nn.Module):
     @override
     def forward(
         self,
-        z_atom: Tensor,
+        x_atom: Tensor,
         compose_features: tuple[Tensor, Tensor],
         focal_idx: Tensor,
     ) -> tuple[Tensor, Tensor]:
         """Map dequantised atom-type features to latent space.
 
         Args:
-            z_atom:
+            x_atom:
                 Dequantised atom-type representation in data space,
                 shape (N_focal, K) where K = num_lig_atom_type.
-                (Despite the name, this tensor is treated as x in the
-                change-of-variables direction used for training.)
             compose_features:
                 Tuple (scalar_features, vector_features) from the encoder,
                 each indexed by `focal_idx`:
@@ -112,12 +111,13 @@ class AtomFlow(nn.Module):
             log-Jacobian contributions.
         """
         if focal_idx.size(0) == 0:
-            atom_log_jacob = torch.zeros_like(z_atom)
-            return z_atom, atom_log_jacob
+            atom_log_jacob = torch.zeros_like(x_atom)
+            return x_atom, atom_log_jacob
 
         sca_focal, vec_focal = compose_features[0][focal_idx], compose_features[1][focal_idx]
         sca_focal, vec_focal = self.net([sca_focal, vec_focal])
 
+        z_atom = x_atom
         atom_log_jacob = torch.zeros_like(z_atom)
         for flow_layer in self.flow_layers:
             log_s, t = flow_layer([sca_focal, vec_focal])
@@ -162,6 +162,7 @@ class AtomFlow(nn.Module):
 
         for flow_layer in reversed(self.flow_layers):
             log_s, t = flow_layer([sca_focal, vec_focal])
-            atom_latent = (atom_latent / torch.exp(log_s)) - t
+            inv_scale = torch.exp(-log_s)
+            atom_latent = atom_latent * inv_scale - t
 
         return atom_latent

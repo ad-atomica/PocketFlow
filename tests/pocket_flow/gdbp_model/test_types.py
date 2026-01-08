@@ -20,4 +20,4 @@ class TestTypes(unittest.TestCase):
         self.assertIn("ScalarVectorFeatures", aliases)
         self.assertIn("BottleneckSpec", aliases)
         self.assertEqual(aliases["ScalarVectorFeatures"], "tuple[Tensor, Tensor]")
-        self.assertEqual(aliases["BottleneckSpec"], "int | tuple[int, int]")
+        self.assertEqual(aliases["BottleneckSpec"], "tuple[int, int]")

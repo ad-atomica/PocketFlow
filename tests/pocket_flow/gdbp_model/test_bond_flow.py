@@ -20,8 +20,8 @@ class TestBondFlow(unittest.TestCase):
 
     def test_has_edges_and_empty_edge_short_circuit(self) -> None:
         """Ensure edge detection and empty-edge fast paths behave."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
@@ -40,12 +40,14 @@ class TestBondFlow(unittest.TestCase):
             in_vec=in_vec,
             edge_channels=edge_channels,
             num_filters=num_filters,
+            bottleneck=(1, 1),
+            cutoff=10.0,
             num_bond_types=num_bond_types,
             num_heads=2,
             num_st_layers=2,
         )
 
-        z_edge = torch.randn(0, num_bond_types + 1)
+        x_edge = torch.randn(0, num_bond_types + 1)
         pos_query = torch.randn(2, 3)
         empty_edge_index_query = torch.empty(2, 0, dtype=torch.long)
         cpx_pos = torch.randn(3, 3)
@@ -53,11 +55,11 @@ class TestBondFlow(unittest.TestCase):
         edge_index_q_cps_knn = torch.empty(2, 0, dtype=torch.long)
         atom_type_emb = torch.randn(2, in_sca)
         index_real = (torch.empty(0, dtype=torch.long), torch.empty(0, dtype=torch.long))
-        tri_edge_index = (torch.empty(0, dtype=torch.long), torch.empty(0, dtype=torch.long))
+        tri_edge_index = torch.empty(2, 0, dtype=torch.long)
         tri_edge_feat = torch.empty(0, num_bond_types + 2)
 
         z_out, log_j = model(
-            z_edge=z_edge,
+            x_edge=x_edge,
             pos_query=pos_query,
             edge_index_query=empty_edge_index_query,
             cpx_pos=cpx_pos,
@@ -67,6 +69,7 @@ class TestBondFlow(unittest.TestCase):
             index_real_cps_edge_for_atten=index_real,
             tri_edge_index=tri_edge_index,
             tri_edge_feat=tri_edge_feat,
+            annealing=False,
         )
         self.assertEqual(tuple(z_out.shape), (0, num_bond_types + 1))
         self.assertEqual(tuple(log_j.shape), (0, num_bond_types + 1))
@@ -82,13 +85,14 @@ class TestBondFlow(unittest.TestCase):
             index_real_cps_edge_for_atten=index_real,
             tri_edge_index=tri_edge_index,
             tri_edge_feat=tri_edge_feat,
+            annealing=False,
         )
         self.assertEqual(tuple(x_out.shape), (0, num_bond_types + 1))
 
     def test_round_trip_small_graph(self) -> None:
         """Check forward/reverse consistency on a tiny graph."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
@@ -104,6 +108,8 @@ class TestBondFlow(unittest.TestCase):
             in_vec=in_vec,
             edge_channels=edge_channels,
             num_filters=num_filters,
+            bottleneck=(1, 1),
+            cutoff=10.0,
             num_bond_types=num_bond_types,
             num_heads=2,
             num_st_layers=2,
@@ -121,23 +127,20 @@ class TestBondFlow(unittest.TestCase):
 
         # Two queried edges: each query connects to one complex node.
         edge_index_query = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
-        z_edge = torch.randn(e_query, num_bond_types + 1)
+        x_edge = torch.randn(e_query, num_bond_types + 1)
 
-        # KNN edges query -> complex for PositionEncoder
-        edge_index_q_cps_knn = torch.tensor([[0, 0, 1, 1], [0, 1, 1, 2]], dtype=torch.long)
+        # KNN edges complex -> query for PositionEncoder (PyG source->target order).
+        edge_index_q_cps_knn = torch.tensor([[0, 1, 1, 2], [0, 0, 1, 1]], dtype=torch.long)
 
         # Edge attention: attend from each queried edge to itself and the other edge.
         index_real = (torch.tensor([0, 0, 1], dtype=torch.long), torch.tensor([0, 1, 1], dtype=torch.long))
 
         # Triangle-edge features: pairs of complex nodes with extra edge-type channels.
-        tri_edge_index = (
-            torch.tensor([0, 1, 2], dtype=torch.long),
-            torch.tensor([1, 2, 0], dtype=torch.long),
-        )
+        tri_edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
         tri_edge_feat = torch.randn(n_attn, num_bond_types + 2)
 
         z, log_j = model(
-            z_edge=z_edge.clone(),
+            x_edge=x_edge.clone(),
             pos_query=pos_query,
             edge_index_query=edge_index_query,
             cpx_pos=cpx_pos,
@@ -167,4 +170,4 @@ class TestBondFlow(unittest.TestCase):
             tri_edge_feat=tri_edge_feat,
             annealing=False,
         )
-        self.assertTrue(torch.allclose(x_hat, z_edge, atol=1e-5, rtol=1e-5))
+        self.assertTrue(torch.allclose(x_hat, x_edge, atol=1e-5, rtol=1e-5))

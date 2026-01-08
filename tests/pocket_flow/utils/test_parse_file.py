@@ -266,6 +266,15 @@ class TestResidue(unittest.TestCase):
             for dst, bond_t in neighbors.items():
                 expected_pairs[(name_to_idx[src], name_to_idx[dst])] = bond_t
 
+        actual_pairs: dict[tuple[int, int], int] = {}
+        for i in range(edge_index.shape[1]):
+            src, dst = edge_index[0, i], edge_index[1, i]
+            actual_pairs[(src, dst)] = edge_type[i]
+
+        for (src, dst), bond_t in expected_pairs.items():
+            self.assertIn((src, dst), actual_pairs, f"Missing bond {src}->{dst}")
+            self.assertEqual(actual_pairs[(src, dst)], bond_t, f"Wrong bond type for {src}->{dst}")
+
 
 class TestLigand(unittest.TestCase):
     """Tests for Ligand class SDF/MOL parsing and coordinate normalization."""

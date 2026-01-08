@@ -18,15 +18,17 @@ class TestPositionPredictor(unittest.TestCase):
 
     def test_probability_matches_isotropic_unit_gaussian_when_single_component(self) -> None:
         """Validate MDN probability for a unit Gaussian."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
         from pocket_flow.gdbp_model.position_predictor import PositionPredictor
 
         # Use helper methods without instantiating the heavy internal nets.
-        predictor = PositionPredictor(in_sca=2, in_vec=1, num_filters=(4, 2), n_component=1)
+        predictor = PositionPredictor(
+            in_sca=2, in_vec=1, num_filters=(4, 2), n_component=1, bottleneck=(1, 1)
+        )
         mu = torch.zeros(2, 1, 3)
         sigma = torch.ones(2, 1, 3)
         pi = torch.ones(2, 1)
@@ -38,8 +40,8 @@ class TestPositionPredictor(unittest.TestCase):
 
     def test_forward_and_sampling_shapes(self) -> None:
         """Check shapes for forward outputs and sampled points."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
@@ -49,7 +51,7 @@ class TestPositionPredictor(unittest.TestCase):
         in_sca, in_vec = 6, 4
         n_component = 3
         predictor = PositionPredictor(
-            in_sca=in_sca, in_vec=in_vec, num_filters=(8, 4), n_component=n_component
+            in_sca=in_sca, in_vec=in_vec, num_filters=(8, 4), n_component=n_component, bottleneck=(1, 1)
         )
 
         n_total = 5

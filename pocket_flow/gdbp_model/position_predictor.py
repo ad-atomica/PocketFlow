@@ -57,7 +57,7 @@ class PositionPredictor(Module):
         in_vec: int,
         num_filters: tuple[int, int],
         n_component: int,
-        bottleneck: BottleneckSpec = 1,
+        bottleneck: BottleneckSpec,
         use_conv1d: bool = False,
     ) -> None:
         """Initialize a position predictor.
@@ -121,7 +121,7 @@ class PositionPredictor(Module):
     @override
     def forward(
         self,
-        h_compose: list[Tensor],
+        h_compose: ScalarVectorFeatures,
         idx_focal: Tensor,
         pos_compose: Tensor,
         atom_type_emb: Tensor | None = None,
@@ -129,7 +129,7 @@ class PositionPredictor(Module):
         """Compute mixture parameters for focal atoms.
 
         Args:
-            h_compose: Scalar/vector feature list `[h_sca, h_vec]` for the full
+            h_compose: Scalar/vector feature tuple `(h_sca, h_vec)` for the full
                 composed system. Expected shapes:
                 - `h_sca`: `(N_total, F_sca)`
                 - `h_vec`: `(N_total, F_vec, 3)`
@@ -153,7 +153,7 @@ class PositionPredictor(Module):
             - `pi`: Mixture weights summing to 1 over components, shape
               `(N_focal, n_component)`.
         """
-        h_focal: list[Tensor] = [h[idx_focal] for h in h_compose]
+        h_focal: list[Tensor] = [h_compose[0][idx_focal], h_compose[1][idx_focal]]
         pos_focal: Tensor = pos_compose[idx_focal]
         if isinstance(atom_type_emb, Tensor):
             h_focal[0] = torch.cat([h_focal[0], atom_type_emb], dim=1)
@@ -212,9 +212,6 @@ class PositionPredictor(Module):
         Returns:
             Per-component densities, shape `(N, n_component)`.
         """
-        # mu: (N, n_component, 3)
-        # sigma: (N, n_component, 3)
-        # pos_target: (N, 3)
         target: Tensor = pos_target.unsqueeze(1).expand_as(mu)
         errors: Tensor = target - mu
         sigma = sigma.clamp_min(EPS_SIGMA)
@@ -245,10 +242,6 @@ class PositionPredictor(Module):
         Returns:
             Sampled coordinates, shape `(N_batch, num, 3)`.
         """
-        # mu: (N_batch, n_cat, 3)
-        # sigma: (N_batch, n_cat, 3)
-        # pi: (N_batch, n_cat)
-        # Returns: (N_batch, num, 3)
         index_cats: Tensor = torch.multinomial(pi, num, replacement=True)  # (N_batch, num)
         index_batch: Tensor = torch.arange(len(mu)).unsqueeze(-1).expand(-1, num)  # (N_batch, num)
         mu_sample: Tensor = mu[index_batch, index_cats]  # (N_batch, num, 3)
@@ -276,8 +269,4 @@ class PositionPredictor(Module):
         Returns:
             Component means, shape `(N_batch, n_component, 3)`.
         """
-        # mu: (N_batch, n_cat, 3)
-        # sigma: (N_batch, n_cat, 3)
-        # pi: (N_batch, n_cat)
-        # Returns: (N_batch, n_cat, 3)
         return mu

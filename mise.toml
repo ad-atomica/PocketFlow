@@ -9,7 +9,7 @@ tombi = "0.7"
 install = "pixi install --locked"
 smoke = "pixi run smoke"
 test-load = "pixi run test-load-ckpt"
-test = { description = "Run pytest tests", run = "pixi run pytest" }
+test = { description = "Run pytest tests", run = "pixi run -e dev pytest" }
 check-py = { description = "Check python code with ruff", run = "ruff check . && ruff format --check ." }
 fix-py = { description = "Fix Python code with Ruff", run = "ruff format . && ruff check --fix ." }
 check-toml = { description = "Check TOML files with Tombi linter", run = "tombi lint" }
@@ -24,7 +24,8 @@ pixi run python main_generate.py \
   --name 1bvr \
   -d cpu \
   --root_path gen_results \
-  --with_print 1
+  --with_print 1 \
+  --num_workers 6
 ''' }
 
 [tasks.check-pytype]

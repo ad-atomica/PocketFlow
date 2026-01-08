@@ -19,8 +19,6 @@ class TestNetUtils(unittest.TestCase):
             {
                 "reset_parameters",
                 "freeze_parameters",
-                "flow_forward",
-                "flow_reverse",
                 "embed_compose",
             }.issubset(func_names)
         )
@@ -34,42 +32,6 @@ class TestNetUtils(unittest.TestCase):
                 "SmoothCrossEntropyLoss",
             }.issubset(class_names)
         )
-
-    def test_flow_forward_reverse_are_inverses_for_constant_layer(self) -> None:
-        """Check flow_forward/flow_reverse invert each other."""
-        if not importlib.util.find_spec("torch"):
-            self.skipTest("requires torch")
-
-        import torch
-        from torch import nn
-
-        from pocket_flow.gdbp_model.net_utils import flow_forward, flow_reverse
-
-        class ConstantLayer(nn.Module):
-            def __init__(self, log_s: float, t: float) -> None:
-                super().__init__()
-                self.log_s = log_s
-                self.t = t
-
-            def forward(
-                self, feat: tuple[torch.Tensor, torch.Tensor]
-            ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-                batch = feat[0].shape[0]
-                log_s = torch.full((batch, 3), self.log_s, dtype=feat[0].dtype, device=feat[0].device)
-                t = torch.full((batch, 3), self.t, dtype=feat[0].dtype, device=feat[0].device)
-                return log_s, t, feat[1]
-
-        layers = nn.ModuleList([ConstantLayer(log_s=0.1, t=0.2), ConstantLayer(log_s=-0.3, t=-0.1)])
-        x = torch.randn(4, 3)
-        feat = (torch.randn(4, 5), torch.randn(4, 2, 3))
-
-        z, log_j, _ = flow_forward(layers, x.clone(), feat)
-        x_hat, _ = flow_reverse(layers, z.clone(), feat)
-        self.assertTrue(torch.allclose(x_hat, x, atol=1e-6, rtol=1e-6))
-
-        # log-Jacobian should equal sum(log_s) per layer (since scale=exp(log_s) > 0).
-        expected = torch.full_like(x, 0.1 + (-0.3))
-        self.assertTrue(torch.allclose(log_j, expected, atol=1e-6, rtol=1e-6))
 
     def test_gaussian_smearing_clamps_to_stop(self) -> None:
         """Ensure distances above stop clamp to the same RBF."""

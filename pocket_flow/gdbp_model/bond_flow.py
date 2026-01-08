@@ -29,7 +29,7 @@ from pocket_flow.gdbp_model.layers import (
     ST_GDBP_Exp,
 )
 from pocket_flow.gdbp_model.net_utils import EdgeExpansion, GaussianSmearing
-from pocket_flow.gdbp_model.types import ScalarVectorFeatures
+from pocket_flow.gdbp_model.types import BottleneckSpec, EdgeIndex, ScalarVectorFeatures
 
 
 def _has_edges(edge_index: Tensor) -> bool:
@@ -42,7 +42,7 @@ def _has_edges(edge_index: Tensor) -> bool:
 class PositionEncoder(Module):
     """Encode query positions into scalar/vector features using complex context.
 
-    Given query atom positions and query→complex neighbour edges, this encoder
+    Given query atom positions and complex→query neighbour edges, this encoder
     aggregates messages from complex atoms into per-query features using
     message passing and attention.
 
@@ -68,9 +68,9 @@ class PositionEncoder(Module):
         in_vec: int,
         edge_channels: int,
         num_filters: tuple[int, int],
-        bottleneck: int = 1,
-        cutoff: float = 10.0,
-        num_heads: int = 1,
+        bottleneck: BottleneckSpec,
+        cutoff: float,
+        num_heads: int,
         use_conv1d: bool = False,
     ) -> None:
         """Initialize the PositionEncoder.
@@ -102,8 +102,8 @@ class PositionEncoder(Module):
             num_filters[1],
             num_filters[0],
             num_filters[1],
-            bottleneck=bottleneck,
-            num_heads=num_heads,
+            bottleneck,
+            num_heads,
             use_conv1d=use_conv1d,
         )
         self.distance_expansion = GaussianSmearing(stop=cutoff, num_gaussians=edge_channels)
@@ -121,7 +121,7 @@ class PositionEncoder(Module):
         cpx_pos: Tensor,
         node_attr_compose: ScalarVectorFeatures,
         atom_type_emb: Tensor,
-        annealing: bool = False,
+        annealing: bool,
     ) -> ScalarVectorFeatures:
         """Compute query features conditioned on nearby complex atoms.
 
@@ -129,9 +129,10 @@ class PositionEncoder(Module):
             pos_query:
                 Query atom positions, shape (N_query, 3).
             edge_index_q_cps_knn:
-                Query→complex neighbour indices, shape (2, E_knn), where
-                edge_index_q_cps_knn[0] are query indices and
-                edge_index_q_cps_knn[1] are complex indices.
+                Complex→query neighbour indices, shape (2, E_knn), using PyG
+                default ordering where edge_index_q_cps_knn[0] are complex
+                (source) indices and edge_index_q_cps_knn[1] are query (target)
+                indices.
             cpx_pos:
                 Complex atom positions, shape (N_complex, 3).
             node_attr_compose:
@@ -149,7 +150,8 @@ class PositionEncoder(Module):
               - scalar: (N_query, num_filters[0])
               - vector: (N_query, num_filters[1], 3)
         """
-        vec_ij = pos_query[edge_index_q_cps_knn[0]] - cpx_pos[edge_index_q_cps_knn[1]]
+        idx_cpx, idx_query = edge_index_q_cps_knn
+        vec_ij = pos_query[idx_query] - cpx_pos[idx_cpx]
         dist_ij = torch.norm(vec_ij, p=2, dim=-1).view(-1, 1)  # [E, 1]
         edge_ij: ScalarVectorFeatures = (self.distance_expansion(dist_ij), self.vector_expansion(vec_ij))
 
@@ -157,10 +159,8 @@ class PositionEncoder(Module):
         y_root_sca, y_root_vec = self.root_lin([atom_type_emb, root_vec_ij])
         x: ScalarVectorFeatures = (y_root_sca, y_root_vec)
 
-        h_q = self.message_module(
-            node_attr_compose, edge_ij, edge_index_q_cps_knn[1], dist_ij, annealing=annealing
-        )
-        y = self.message_att(x, h_q, edge_index_q_cps_knn[0])
+        h_q = self.message_module(node_attr_compose, edge_ij, idx_cpx, annealing, dist_ij)
+        y = self.message_att(x, h_q, idx_query)
         return y
 
 
@@ -205,11 +205,11 @@ class BondFlow(Module):
         in_vec: int,
         edge_channels: int,
         num_filters: tuple[int, int],
-        num_bond_types: int = 3,
-        num_heads: int = 4,
-        cutoff: float = 10.0,
-        num_st_layers: int = 6,
-        bottleneck: int = 1,
+        num_bond_types: int,
+        num_heads: int,
+        cutoff: float,
+        num_st_layers: int,
+        bottleneck: BottleneckSpec,
         use_conv1d: bool = False,
     ) -> None:
         """Initialize the BondFlow model.
@@ -237,7 +237,7 @@ class BondFlow(Module):
             edge_channels,
             num_filters,
             cutoff=cutoff,
-            # num_heads=num_heads,  # TODO: include during train; incorrectly not used in original code.
+            num_heads=num_heads,
             bottleneck=bottleneck,
             use_conv1d=use_conv1d,
         )
@@ -246,16 +246,20 @@ class BondFlow(Module):
         self.distance_expansion_3A = GaussianSmearing(stop=3.0, num_gaussians=edge_channels)
         self.vector_expansion = EdgeExpansion(edge_channels)
         self.nn_edge_ij = Sequential(
-            GDBPerceptronVN(edge_channels, edge_channels, num_filters[0], num_filters[1]),
-            GDBLinear(num_filters[0], num_filters[1], num_filters[0], num_filters[1]),
+            GDBPerceptronVN(edge_channels, edge_channels, num_filters[0], num_filters[1], bottleneck=(1, 1)),
+            GDBLinear(num_filters[0], num_filters[1], num_filters[0], num_filters[1], bottleneck=(1, 1)),
         )
         self.edge_feat = Sequential(
             GDBPerceptronVN(
-                num_filters[0] * 2 + in_sca, num_filters[1] * 2 + in_vec, num_filters[0], num_filters[1]
+                num_filters[0] * 2 + in_sca,
+                num_filters[1] * 2 + in_vec,
+                num_filters[0],
+                num_filters[1],
+                bottleneck=(1, 1),
             ),
-            GDBLinear(num_filters[0], num_filters[1], num_filters[0], num_filters[1]),
+            GDBLinear(num_filters[0], num_filters[1], num_filters[0], num_filters[1], bottleneck=(1, 1)),
         )
-        self.edge_atten = AttentionEdges(num_filters, num_filters, num_heads, num_bond_types)
+        self.edge_atten = AttentionEdges(num_filters, num_filters, (1, 1), num_heads, num_bond_types)
 
         # Normalizing flow layers
         self.flow_layers = ModuleList()
@@ -273,7 +277,7 @@ class BondFlow(Module):
     @override
     def forward(
         self,
-        z_edge: Tensor,
+        x_edge: Tensor,
         pos_query: Tensor,
         edge_index_query: Tensor,
         cpx_pos: Tensor,
@@ -281,19 +285,17 @@ class BondFlow(Module):
         edge_index_q_cps_knn: Tensor,
         atom_type_emb: Tensor,
         index_real_cps_edge_for_atten: tuple[Tensor, Tensor],
-        tri_edge_index: tuple[Tensor, Tensor],
+        tri_edge_index: EdgeIndex,
         tri_edge_feat: Tensor,
-        annealing: bool = False,
+        annealing: bool,
     ) -> tuple[Tensor, Tensor]:
         """Map dequantised edge/bond-type features to latent space.
 
         Args:
-            z_edge:
+            x_edge:
                 Dequantised categorical edge representation in data space,
                 shape (E, B+1), where B = num_bond_types and the extra channel
                 represents 'no-bond'.
-                (Despite the name, this tensor is treated as x in the
-                change-of-variables direction used for training.)
             pos_query:
                 Query atom positions, shape (N_query, 3).
             edge_index_query:
@@ -304,13 +306,15 @@ class BondFlow(Module):
             node_attr_compose:
                 Complex node features as (scalar, vector).
             edge_index_q_cps_knn:
-                Query→complex KNN edges for building query context.
+                Complex→query KNN edges for building query context.
             atom_type_emb:
                 Query atom-type embeddings.
             index_real_cps_edge_for_atten:
                 Indices selecting the (i, j) pairs used by the edge attention.
-            tri_edge_index, tri_edge_feat:
-                Triangle/3-body features used to construct attention biases.
+            tri_edge_index: (2, E_tri)
+                Triangle-edge node indices used to construct attention biases.
+            tri_edge_feat:
+                Triangle-edge scalar features, shape (E_tri, K).
             annealing:
                 If True, apply distance-based message annealing.
 
@@ -324,10 +328,8 @@ class BondFlow(Module):
             If E == 0, returns empty tensors on the correct device/dtype.
         """
         if not _has_edges(edge_index_query):
-            z_edge = torch.empty([0, self.num_bond_types + 1], device=pos_query.device, dtype=z_edge.dtype)
-            edge_log_jacob = torch.empty(
-                [0, self.num_bond_types + 1], device=pos_query.device, dtype=z_edge.dtype
-            )
+            z_edge = x_edge.new_zeros([0, self.num_bond_types + 1])
+            edge_log_jacob = x_edge.new_zeros([0, self.num_bond_types + 1])
             return z_edge, edge_log_jacob
 
         y = self.pos_encoder(
@@ -362,6 +364,7 @@ class BondFlow(Module):
         )
 
         # Apply normalizing flow layers
+        z_edge = x_edge
         edge_log_jacob = torch.zeros_like(z_edge)
         for flow_layer in self.flow_layers:
             log_s, t = flow_layer(edge_attr)
@@ -380,9 +383,9 @@ class BondFlow(Module):
         edge_index_q_cps_knn: Tensor,
         atom_type_emb: Tensor,
         index_real_cps_edge_for_atten: tuple[Tensor, Tensor],
-        tri_edge_index: tuple[Tensor, Tensor],
+        tri_edge_index: EdgeIndex,
         tri_edge_feat: Tensor,
-        annealing: bool = False,
+        annealing: bool,
     ) -> Tensor:
         """Map latent samples to dequantised edge/bond-type features.
 
@@ -404,10 +407,7 @@ class BondFlow(Module):
             If E == 0, returns an empty tensor on the correct device/dtype.
         """
         if not _has_edges(edge_index_query):
-            edge_latent = torch.empty(
-                [0, self.num_bond_types + 1], device=pos_query.device, dtype=edge_latent.dtype
-            )
-            return edge_latent
+            return edge_latent.new_zeros([0, self.num_bond_types + 1])
 
         y = self.pos_encoder(
             pos_query, edge_index_q_cps_knn, cpx_pos, node_attr_compose, atom_type_emb, annealing=annealing
@@ -443,6 +443,7 @@ class BondFlow(Module):
         # Apply inverse flow layers (in reverse order)
         for flow_layer in reversed(self.flow_layers):
             log_s, t = flow_layer(edge_attr)
-            edge_latent = (edge_latent / torch.exp(log_s)) - t
+            inv_scale = torch.exp(-log_s)
+            edge_latent = edge_latent * inv_scale - t
 
         return edge_latent

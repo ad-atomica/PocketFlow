@@ -126,6 +126,25 @@ class TestSubstructure(unittest.TestCase):
             metrics.substructure([[]])
 
 
+class TestEmptyRingSizeStats(unittest.TestCase):
+    def test_empty_ring_size_stats_is_zero_filled(self) -> None:
+        stats = metrics.empty_ring_size_stats()
+        self.assertEqual(stats["sssr"], {})
+        for key in (
+            "tri_ring",
+            "qua_ring",
+            "fif_ring",
+            "hex_ring",
+            "hep_ring",
+            "oct_ring",
+            "big_ring",
+            "fused_ring",
+            "unexpected_ring",
+        ):
+            self.assertEqual(stats[key]["num"], 0)
+            self.assertEqual(stats[key].get("rate", 0.0), 0.0)
+
+
 class TestSmoothing(unittest.TestCase):
     def test_smoothing_weight_zero_returns_input(self) -> None:
         scalars = [1.0, 2.0, 3.0]

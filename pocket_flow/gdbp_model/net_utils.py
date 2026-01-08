@@ -4,12 +4,12 @@ This module groups small, reusable components used throughout the GDBP model
 implementation:
 
 - Parameter initialization / freezing helpers based on name substrings.
-- Forward/reverse passes for simple affine flows.
 - Common feature expansions (Gaussian distance smearing, edge direction expansion).
 - Lightweight feature transforms (scalarization, rescaling, atom embedding).
 - A label-smoothed cross entropy loss.
 """
 
+import math
 from collections.abc import Sequence
 from typing import Literal, override
 
@@ -82,73 +82,6 @@ def freeze_parameters[T: nn.Module](model: T, keys: Sequence[str]) -> T:
             if k in name:
                 para.requires_grad = False
     return model
-
-
-def flow_reverse(
-    flow_layers: nn.ModuleList, latent: Tensor, feat: tuple[Tensor, Tensor]
-) -> tuple[Tensor, Tensor]:
-    """Apply the inverse of an affine flow parameterized by `flow_layers`.
-
-    Each layer is expected to be callable as `layer(feat)` and return a triple
-    `(s_sca, t_sca, vec)`, where `s_sca` and `t_sca` are broadcastable to
-    `latent`. The scale is interpreted in log-space and exponentiated before use.
-
-    The inverse transform for each layer is:
-        `latent <- (latent / exp(s_sca)) - t_sca`
-
-    Args:
-        flow_layers: Sequence of flow layers (applied in reverse order).
-        latent: Latent tensor to transform (typically scalar features), shape
-            `(..., D)` depending on the caller.
-        feat: Conditioning features passed to each layer as-is, as a
-            `(scalar, vector)` tuple.
-
-    Returns:
-        A `(latent, vec)` tuple where `latent` is the transformed tensor and
-        `vec` is the last vector output produced by the flow layers.
-    """
-    vec = feat[1]
-    for i in reversed(range(len(flow_layers))):
-        s_sca, t_sca, vec = flow_layers[i](feat)
-        s_sca = s_sca.exp()
-        latent = (latent / s_sca) - t_sca
-    return latent, vec
-
-
-def flow_forward(
-    flow_layers: nn.ModuleList, x_z: Tensor, feature: tuple[Tensor, Tensor]
-) -> tuple[Tensor, Tensor, Tensor]:
-    """Apply a forward affine flow and accumulate the log-Jacobian.
-
-    Each layer is expected to be callable as `layer(feature)` and return a
-    triple `(s_sca, t_sca, vec)`, where `s_sca` and `t_sca` are broadcastable to
-    `x_z`. The scale is interpreted in log-space and exponentiated before use.
-
-    The forward transform for each layer is:
-        `x_z <- (x_z + t_sca) * exp(s_sca)`
-
-    The per-dimension log-Jacobian contributions are accumulated as:
-        `x_log_jacob += log(|exp(s_sca)|)`
-
-    Args:
-        flow_layers: Sequence of flow layers (applied in order).
-        x_z: Tensor to transform, shape `(..., D)` depending on the caller.
-        feature: Conditioning features passed to each layer as-is, as a
-            `(scalar, vector)` tuple.
-
-    Returns:
-        A `(x_z, x_log_jacob, vec)` tuple where `x_z` is the transformed tensor,
-        `x_log_jacob` has the same shape as `x_z`, and `vec` is the last vector
-        output produced by the flow layers.
-    """
-    x_log_jacob = torch.zeros_like(x_z)
-    vec = feature[1]
-    for i in range(len(flow_layers)):
-        s_sca, t_sca, vec = flow_layers[i](feature)
-        s_sca = s_sca.exp()
-        x_z = (x_z + t_sca) * s_sca
-        x_log_jacob += (torch.abs(s_sca) + 1e-20).log()
-    return x_z, x_log_jacob, vec
 
 
 class GaussianSmearing(nn.Module):
@@ -310,10 +243,22 @@ class Rescale(nn.Module):
 
     weight: nn.Parameter
 
-    def __init__(self) -> None:
-        """Initialize the rescale factor to 1.0 via `weight = 0`."""
+    max_scale: float | None
+
+    def __init__(self, max_scale: float | None = 20.0) -> None:
+        """Initialize the rescale factor to 1.0 via `weight = 0`.
+
+        Args:
+            max_scale: Optional upper bound on the learned multiplicative factor
+                `exp(weight)`. If set, this indirectly bounds downstream log-scale
+                terms produced via `exp(weight) * tanh(·)` and helps prevent
+                overflows in subsequent `exp(log_s)` computations.
+        """
         super().__init__()
+        if max_scale is not None and max_scale <= 0:
+            raise ValueError("max_scale must be positive or None")
         self.weight = nn.Parameter(torch.zeros([1]))
+        self.max_scale = max_scale
 
     @override
     def forward(self, x: Tensor) -> Tensor:
@@ -326,14 +271,21 @@ class Rescale(nn.Module):
             `exp(weight) * x`, with the same shape as `x`.
 
         Raises:
-            RuntimeError: If `exp(weight)` contains NaNs (guard against unstable
-                training / corrupted parameters).
+            RuntimeError: If `weight` or `exp(weight)` has non-finite entries
+                (guard against unstable training / corrupted parameters).
         """
-        if torch.isnan(torch.exp(self.weight)).any():
-            print(self.weight)
-            raise RuntimeError("Rescale factor has NaN entries")
+        if not torch.isfinite(self.weight).all():
+            raise RuntimeError("Rescale weight has non-finite entries")
 
-        x = torch.exp(self.weight) * x
+        weight = self.weight
+        if self.max_scale is not None:
+            weight = weight.clamp_max(math.log(self.max_scale))
+
+        scale = torch.exp(weight)
+        if not torch.isfinite(scale).all():
+            raise RuntimeError("Rescale factor has non-finite entries")
+
+        x = scale * x
         return x
 
 

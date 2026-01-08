@@ -60,7 +60,7 @@ class FocalNet(Module):
         in_vec: int,
         hidden_dim_sca: int,
         hidden_dim_vec: int,
-        bottleneck: BottleneckSpec = 1,
+        bottleneck: BottleneckSpec,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()

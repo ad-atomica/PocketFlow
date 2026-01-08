@@ -17,15 +17,15 @@ class TestFocalNet(unittest.TestCase):
 
     def test_forward_shapes_for_index_and_mask(self) -> None:
         """Check output shapes for index and mask selection."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
         from pocket_flow.gdbp_model.focal_net import FocalNet
 
         torch.manual_seed(0)
-        model = FocalNet(in_sca=6, in_vec=4, hidden_dim_sca=8, hidden_dim_vec=4)
+        model = FocalNet(in_sca=6, in_vec=4, hidden_dim_sca=8, hidden_dim_vec=4, bottleneck=(1, 1))
         n = 5
         h_att = (torch.randn(n, 6), torch.randn(n, 4, 3))
 

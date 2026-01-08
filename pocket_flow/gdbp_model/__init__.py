@@ -22,8 +22,6 @@ from .net_utils import (
     Scalarize,
     SmoothCrossEntropyLoss,
     embed_compose,
-    flow_forward,
-    flow_reverse,
     freeze_parameters,
     reset_parameters,
 )
@@ -55,8 +53,6 @@ __all__ = [
     "VNLeakyReLU",
     "VNLinear",
     "embed_compose",
-    "flow_forward",
-    "flow_reverse",
     "freeze_parameters",
     "reset_parameters",
 ]

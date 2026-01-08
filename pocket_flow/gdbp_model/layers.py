@@ -13,21 +13,29 @@ Notes:
     - Many layers are "vector-neuron" style layers: they apply learned linear maps
       across channels while preserving the 3D vector structure.
     - Several modules operate on *messages* indexed by `edge_index`-like tensors
-      and use `torch_scatter` for segment softmax/sums.
+      and use `torch_geometric.utils` scatter operations for segment softmax/sums.
 """
 
+import math
 from math import pi as PI
 from typing import override
 
 import torch
 from torch import Tensor, nn
 from torch.nn import LayerNorm, LeakyReLU, Linear, Module
-from torch_scatter import scatter_softmax, scatter_sum
+from torch_geometric.utils import scatter as pyg_scatter
+from torch_geometric.utils import softmax as pyg_softmax
 
 from pocket_flow.gdbp_model.net_utils import EdgeExpansion, GaussianSmearing, Rescale
-from pocket_flow.gdbp_model.types import BottleneckSpec, ScalarVectorFeatures
+from pocket_flow.gdbp_model.types import BottleneckSpec, EdgeIndex, ScalarVectorFeatures
 
 EPS: float = 1e-6
+
+
+def _clamp_log_s(log_s: Tensor) -> Tensor:
+    """Clamp log-scales to avoid exp overflow for the active dtype."""
+    max_log = math.log(torch.finfo(log_s.dtype).max) - 1.0
+    return log_s.clamp(min=-max_log, max=max_log)
 
 
 class VNLinear(Module):
@@ -86,8 +94,8 @@ class VNLeakyReLU(Module):
     def __init__(
         self,
         in_channels: int,
-        share_nonlinearity: bool = False,
-        negative_slope: float = 0.01,
+        share_nonlinearity: bool,
+        negative_slope: float,
     ) -> None:
         super().__init__()
         out_channels = 1 if share_nonlinearity else in_channels
@@ -139,10 +147,9 @@ class GDBLinear(Module):
         out_scalar: Number of output scalar channels.
         out_vector: Number of output vector channels.
         bottleneck:
-            Bottleneck factor(s) controlling intermediate widths.
-            If an `int`, the same factor is used for scalar and vector branches.
-            If a `(sca_bottleneck, vec_bottleneck)` tuple, the two branches use
-            different factors.
+            Bottleneck factors controlling intermediate widths as a tuple
+            `(sca_bottleneck, vec_bottleneck)` where the first value is used for
+            scalar branches and the second for vector branches.
         use_conv1d:
             Kept for weight-loading backward compatibility. This flag is stored
             but does not affect computation in this implementation.
@@ -169,17 +176,13 @@ class GDBLinear(Module):
         in_vector: int,
         out_scalar: int,
         out_vector: int,
-        bottleneck: BottleneckSpec = (1, 1),
+        bottleneck: BottleneckSpec,
         # Note: use_conv1d does nothing but must be kept for model weight loading compatibility
         use_conv1d: bool = False,  # noqa: ARG002
     ) -> None:
         super().__init__()
 
-        if isinstance(bottleneck, int):
-            sca_bottleneck = bottleneck
-            vec_bottleneck = bottleneck
-        else:
-            sca_bottleneck, vec_bottleneck = bottleneck
+        sca_bottleneck, vec_bottleneck = bottleneck
 
         assert in_vector % vec_bottleneck == 0, (
             f"in_vector ({in_vector}) must be divisible by vec_bottleneck ({vec_bottleneck})"
@@ -261,7 +264,7 @@ class GDBPerceptronVN(Module):
         in_vector: int,
         out_scalar: int,
         out_vector: int,
-        bottleneck: BottleneckSpec = 1,
+        bottleneck: BottleneckSpec,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -269,7 +272,7 @@ class GDBPerceptronVN(Module):
             in_scalar, in_vector, out_scalar, out_vector, bottleneck=bottleneck, use_conv1d=use_conv1d
         )
         self.act_sca = LeakyReLU()
-        self.act_vec = VNLeakyReLU(out_vector)
+        self.act_vec = VNLeakyReLU(out_vector, share_nonlinearity=False, negative_slope=0.01)
 
     @override
     def forward(self, x: ScalarVectorFeatures) -> ScalarVectorFeatures:
@@ -329,7 +332,7 @@ class ST_GDBP_Exp(Module):
         in_vector: int,
         out_scalar: int,
         out_vector: int,
-        bottleneck: BottleneckSpec = 1,
+        bottleneck: BottleneckSpec,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -345,7 +348,7 @@ class ST_GDBP_Exp(Module):
             in_scalar, in_vector, out_scalar * 2, out_vector, bottleneck=bottleneck, use_conv1d=use_conv1d
         )
         self.act_sca = nn.Tanh()
-        self.act_vec = VNLeakyReLU(out_vector)
+        self.act_vec = VNLeakyReLU(out_vector, share_nonlinearity=False, negative_slope=0.01)
         self.rescale = Rescale()
 
     @override
@@ -369,6 +372,7 @@ class ST_GDBP_Exp(Module):
         s = sca[:, : self.out_scalar]
         t = sca[:, self.out_scalar :]
         s = self.rescale(torch.tanh(s))
+        s = _clamp_log_s(s)
         return s, t
 
 
@@ -382,9 +386,9 @@ class MessageAttention(Module):
       - scalar score: dot product over scalar channel dimension
       - vector score: dot product over both vector channel and xyz dimensions
 
-    Segment-wise normalization and aggregation use `torch_scatter`:
-      - `scatter_softmax(..., edge_index_i)` normalizes over messages per node
-      - `scatter_sum(..., edge_index_i)` aggregates into `N` node outputs
+    Segment-wise normalization and aggregation use `torch_geometric.utils`:
+      - `pyg_softmax(..., edge_index_i)` normalizes over messages per node
+      - `pyg_scatter(..., reduce="sum")` aggregates into `N` node outputs
 
     Args:
         in_sca: Scalar channel count for `x`.
@@ -407,8 +411,8 @@ class MessageAttention(Module):
         in_vec: int,
         out_sca: int,
         out_vec: int,
-        bottleneck: BottleneckSpec = 1,
-        num_heads: int = 1,
+        bottleneck: BottleneckSpec,
+        num_heads: int,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -461,15 +465,15 @@ class MessageAttention(Module):
             (msg[1] * x_i[1]).sum(-1).sum(-1),
         ]
         alpha = [
-            scatter_softmax(alpha[0], edge_index_i, dim=0),
-            scatter_softmax(alpha[1], edge_index_i, dim=0),
+            pyg_softmax(alpha[0], edge_index_i, dim=0, num_nodes=N),
+            pyg_softmax(alpha[1], edge_index_i, dim=0, num_nodes=N),
         ]
         msg = [
             (alpha[0].unsqueeze(-1) * msg[0]).view(N_msg, -1),
             (alpha[1].unsqueeze(-1).unsqueeze(-1) * msg[1]).view(N_msg, -1, 3),
         ]
-        sca_msg = scatter_sum(msg[0], edge_index_i, dim=0, dim_size=N)
-        vec_msg = scatter_sum(msg[1], edge_index_i, dim=0, dim_size=N)
+        sca_msg = pyg_scatter(msg[0], edge_index_i, dim=0, dim_size=N, reduce="sum")
+        vec_msg = pyg_scatter(msg[1], edge_index_i, dim=0, dim_size=N, reduce="sum")
         root_sca, root_vec = self.lin_v(x)
         out_sca = sca_msg + root_sca
         out_vec = vec_msg + root_vec
@@ -515,8 +519,8 @@ class MessageModule(Module):
         edge_vec: int,
         out_sca: int,
         out_vec: int,
-        bottleneck: BottleneckSpec = 1,
-        cutoff: float = 10.0,
+        bottleneck: BottleneckSpec,
+        cutoff: float,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -544,8 +548,8 @@ class MessageModule(Module):
         node_features: ScalarVectorFeatures,
         edge_features: ScalarVectorFeatures,
         edge_index_node: Tensor,
+        annealing: bool,
         dist_ij: Tensor | None = None,
-        annealing: bool = False,
     ) -> ScalarVectorFeatures:
         """Construct edge messages.
 
@@ -627,9 +631,9 @@ class AttentionInteractionBlockVN(Module):
         hidden_channels: tuple[int, int],
         edge_channels: int,
         num_edge_types: int,
-        bottleneck: BottleneckSpec = 1,
-        num_heads: int = 1,
-        cutoff: float = 10.0,
+        bottleneck: BottleneckSpec,
+        num_heads: int,
+        cutoff: float,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -653,13 +657,13 @@ class AttentionInteractionBlockVN(Module):
             hidden_channels[1],
             hidden_channels[0],
             hidden_channels[1],
-            bottleneck=bottleneck,
-            num_heads=num_heads,
+            bottleneck,
+            num_heads,
             use_conv1d=use_conv1d,
         )
 
         self.act_sca = LeakyReLU()
-        self.act_vec = VNLeakyReLU(hidden_channels[1], share_nonlinearity=True)
+        self.act_vec = VNLeakyReLU(hidden_channels[1], share_nonlinearity=True, negative_slope=0.01)
         self.out_transform = GDBLinear(
             hidden_channels[0],
             hidden_channels[1],
@@ -679,7 +683,7 @@ class AttentionInteractionBlockVN(Module):
         edge_feature: Tensor,
         edge_vector: Tensor,
         edge_dist: Tensor,
-        annealing: bool = False,
+        annealing: bool,
     ) -> ScalarVectorFeatures:
         """Update node features given edge information.
 
@@ -688,9 +692,10 @@ class AttentionInteractionBlockVN(Module):
                 Node features `(scalar, vector)` with shapes `(N, F_sca)` and
                 `(N, F_vec, 3)`.
             edge_index:
-                Edge indices as a `(2, E)` tensor where `row, col = edge_index`.
-                This block uses `col` as the per-edge node index for message
-                construction and `row` as the destination index for aggregation.
+                Edge indices as a `(2, E)` tensor using PyG default ordering
+                where `src, dst = edge_index`. This block uses `src` as the
+                per-edge node index for message construction and `dst` as the
+                destination index for aggregation.
             edge_feature:
                 Per-edge scalar features to concatenate after distance expansion,
                 shape `(E, num_edge_types)`.
@@ -705,15 +710,15 @@ class AttentionInteractionBlockVN(Module):
             Updated node features `(scalar, vector)` with shapes `(N, F_sca)` and
             `(N, F_vec, 3)`.
         """
-        row, col = edge_index
+        src, dst = edge_index
 
         edge_sca_feat = torch.cat([self.distance_expansion(edge_dist), edge_feature], dim=-1)
         edge_vec_feat = self.vector_expansion(edge_vector)
 
         msg_j_sca, msg_j_vec = self.message_module(
-            x, (edge_sca_feat, edge_vec_feat), col, edge_dist, annealing=annealing
+            x, (edge_sca_feat, edge_vec_feat), src, annealing, edge_dist
         )
-        out_sca, out_vec = self.msg_att(x, (msg_j_sca, msg_j_vec), row)
+        out_sca, out_vec = self.msg_att(x, (msg_j_sca, msg_j_vec), dst)
         out_sca = self.layernorm_sca(out_sca)
         out_vec = self.layernorm_vec(out_vec)
         out = self.out_transform((self.act_sca(out_sca), self.act_vec(out_vec)))
@@ -750,9 +755,9 @@ class AttentionBias(Module):
         self,
         num_heads: int,
         hidden_channels: tuple[int, int],
-        cutoff: float = 10.0,
-        num_bond_types: int = 3,
-        bottleneck: BottleneckSpec = 1,
+        cutoff: float,
+        bottleneck: BottleneckSpec,
+        num_bond_types: int,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -774,15 +779,16 @@ class AttentionBias(Module):
     @override
     def forward(
         self,
-        tri_edge_index: Tensor,
+        tri_edge_index: EdgeIndex,
         tri_edge_feat: Tensor,
         pos_compose: Tensor,
     ) -> tuple[Tensor, Tensor]:
         """Compute per-head scalar/vector attention biases.
 
         Args:
-            tri_edge_index: Index tensor of shape `(2, E_tri)` giving `(a, b)`
-                pairs used to form vectors `pos[a] - pos[b]`.
+            tri_edge_index: (2, E_tri)
+                Index tensor using PyG default ordering `(src, dst)` used to form
+                vectors `pos[dst] - pos[src]`.
             tri_edge_feat: Additional per-triangle-edge scalar features, shape
                 `(E_tri, K)`.
             pos_compose: Node positions, shape `(N, 3)`.
@@ -793,10 +799,10 @@ class AttentionBias(Module):
               - `bias_vec`: shape `(E_tri, num_heads)`, derived from the squared
                 norm of per-head vector outputs.
         """
-        node_a, node_b = tri_edge_index
-        pos_a = pos_compose[node_a]
-        pos_b = pos_compose[node_b]
-        vector = pos_a - pos_b
+        src, dst = tri_edge_index
+        pos_src = pos_compose[src]
+        pos_dst = pos_compose[dst]
+        vector = pos_dst - pos_src
         dist = torch.norm(vector, p=2, dim=-1)
 
         dist_feat = self.distance_expansion(dist)
@@ -817,7 +823,7 @@ class AttentionEdges(Module):
 
     The attention is computed over a sparse set of edge pairs given by
     `index_real_cps_edge_for_atten = (edge_i, edge_j)`, and aggregated back to a
-    per-edge output using `scatter_softmax`/`scatter_sum` with `edge_i` as the
+    per-edge output using `pyg_softmax`/`pyg_scatter` with `edge_i` as the
     segment index.
 
     Args:
@@ -844,9 +850,9 @@ class AttentionEdges(Module):
         self,
         hidden_channels: tuple[int, int],
         key_channels: tuple[int, int],
-        num_heads: int = 1,
-        num_bond_types: int = 3,
-        bottleneck: BottleneckSpec = 1,
+        bottleneck: BottleneckSpec,
+        num_heads: int,
+        num_bond_types: int,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -884,10 +890,11 @@ class AttentionEdges(Module):
         )
 
         self.atten_bias_lin = AttentionBias(
-            self.num_heads,
-            hidden_channels,
-            num_bond_types=num_bond_types,
+            num_heads=self.num_heads,
+            hidden_channels=hidden_channels,
+            cutoff=10.0,
             bottleneck=bottleneck,
+            num_bond_types=num_bond_types,
             use_conv1d=use_conv1d,
         )
 
@@ -901,7 +908,7 @@ class AttentionEdges(Module):
         edge_index: Tensor,
         pos_compose: Tensor,
         index_real_cps_edge_for_atten: tuple[Tensor, Tensor],
-        tri_edge_index: Tensor,
+        tri_edge_index: EdgeIndex,
         tri_edge_feat: Tensor,
     ) -> ScalarVectorFeatures:
         """Compute attended edge features.
@@ -919,9 +926,8 @@ class AttentionEdges(Module):
                 Tuple `(edge_i, edge_j)` of index tensors, each of shape
                 `(N_attn,)`, defining which edge pairs participate in attention.
                 The output is aggregated over pairs sharing the same `edge_i`.
-            tri_edge_index:
-                Triangle-edge node indices passed to `AttentionBias`, shape
-                `(2, N_attn)` (or another shape consistent with `tri_edge_feat`).
+            tri_edge_index: (2, E_tri)
+                Triangle-edge node indices passed to `AttentionBias`.
             tri_edge_feat:
                 Triangle-edge scalar features passed to `AttentionBias`, shape
                 `(N_attn, K)`.
@@ -963,24 +969,26 @@ class AttentionEdges(Module):
 
         alpha = [atten_bias[0] + qk_ij[0], atten_bias[1] + qk_ij[1]]
         alpha = [
-            scatter_softmax(alpha[0], index_edge_i_list, dim=0),
-            scatter_softmax(alpha[1], index_edge_i_list, dim=0),
+            pyg_softmax(alpha[0], index_edge_i_list, dim=0, num_nodes=N),
+            pyg_softmax(alpha[1], index_edge_i_list, dim=0, num_nodes=N),
         ]
 
         values_j = [h_values[0][index_edge_j_list], h_values[1][index_edge_j_list]]
         num_attens = len(index_edge_j_list)
         output = [
-            scatter_sum(
+            pyg_scatter(
                 (alpha[0].unsqueeze(-1) * values_j[0]).view(num_attens, -1),
                 index_edge_i_list,
                 dim=0,
                 dim_size=N,
+                reduce="sum",
             ),
-            scatter_sum(
+            pyg_scatter(
                 (alpha[1].unsqueeze(-1).unsqueeze(-1) * values_j[1]).view(num_attens, -1, 3),
                 index_edge_i_list,
                 dim=0,
                 dim_size=N,
+                reduce="sum",
             ),
         ]
 

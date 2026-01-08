@@ -39,7 +39,7 @@ from rdkit.Chem.rdchem import Mol
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from torch_geometric.data import Data
+    from pocket_flow.utils.data import ComplexData
 
 MAX_VALENCE_DICT: dict[int, torch.Tensor] = {
     6: torch.LongTensor([4]),
@@ -58,14 +58,14 @@ ELEMENT_TYPE_MAP: tuple[int, ...] = (1, 6, 7, 8, 9, 15, 16, 17, 35, 53)
 
 
 def add_ligand_atom_to_data(
-    old_data: Data,
+    old_data: ComplexData,
     pos: torch.Tensor,
     element: torch.Tensor,
     bond_index: torch.Tensor,
     bond_type: torch.Tensor,
     type_map: tuple[int, ...] = ELEMENT_TYPE_MAP,
     max_valence_dict: dict[int, torch.Tensor] = MAX_VALENCE_DICT,
-) -> Data:
+) -> ComplexData:
     """
     Append a new ligand atom (and optional bonds) to a ligand context `Data`.
 
@@ -195,7 +195,7 @@ def add_ligand_atom_to_data(
     return data
 
 
-def data2mol(data: Data, raise_error: bool = True, sanitize: bool = True) -> Mol:
+def data2mol(data: ComplexData, raise_error: bool = True, sanitize: bool = True) -> Mol:
     """
     Reconstruct an RDKit molecule from a ligand context graph.
 
@@ -310,7 +310,7 @@ class MolReconsError(Exception):
     pass
 
 
-def add_context(data: Data) -> Data:
+def add_context(data: ComplexData) -> ComplexData:
     """
     Populate ligand context fields from ligand fields.
 

@@ -17,15 +17,23 @@ class TestContextEncoder(unittest.TestCase):
 
     def test_invalid_edge_feature_channels_raises(self) -> None:
         """Assert mismatched edge feature channels raise an error."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
         from pocket_flow.gdbp_model.encoder import ContextEncoder
 
         encoder = ContextEncoder(
-            hidden_channels=(8, 4), edge_channels=6, num_edge_types=2, num_interactions=1
+            hidden_channels=(8, 4),
+            edge_channels=6,
+            num_edge_types=2,
+            key_channels=128,
+            num_heads=4,
+            num_interactions=1,
+            k=32,
+            cutoff=10.0,
+            bottleneck=(1, 1),
         )
         n, e = 4, 4
         node_attr = (torch.randn(n, 8), torch.randn(n, 4, 3))
@@ -38,8 +46,8 @@ class TestContextEncoder(unittest.TestCase):
 
     def test_forward_shape_smoke(self) -> None:
         """Sanity-check output shapes for a small random graph."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
@@ -47,12 +55,20 @@ class TestContextEncoder(unittest.TestCase):
 
         torch.manual_seed(0)
         encoder = ContextEncoder(
-            hidden_channels=(8, 4), edge_channels=6, num_edge_types=2, num_interactions=2
+            hidden_channels=(8, 4),
+            edge_channels=6,
+            num_edge_types=2,
+            key_channels=128,
+            num_heads=4,
+            num_interactions=2,
+            k=32,
+            cutoff=10.0,
+            bottleneck=(1, 1),
         )
         n, e = 6, 10
         node_attr = (torch.randn(n, 8), torch.randn(n, 4, 3))
         pos = torch.randn(n, 3)
-        # destination=row, source=col
+        # source=row, destination=col
         edge_index = torch.randint(0, n, (2, e), dtype=torch.long)
         edge_feature = torch.randn(e, 2)
         out_sca, out_vec = encoder(node_attr, pos, edge_index, edge_feature, annealing=False)

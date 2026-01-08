@@ -11,10 +11,10 @@ The encoder applies a sequence of
 blocks and accumulates their outputs as residual updates.
 
 Edge indexing convention:
-    ``edge_index`` is a ``(2, E)`` tensor. This code treats ``edge_index[0]`` as
-    the **destination** ("row") node indices and ``edge_index[1]`` as the
-    **source/context** ("col") node indices. The per-edge direction vector is
-    computed as ``pos[row] - pos[col]`` (pointing from source to destination).
+    ``edge_index`` is a ``(2, E)`` tensor using the PyG default ordering:
+    ``edge_index[0]`` are **source** node indices and ``edge_index[1]`` are
+    **destination/target** node indices. The per-edge direction vector is
+    computed as ``pos[dst] - pos[src]`` (pointing from source to destination).
 """
 
 from typing import override
@@ -76,15 +76,15 @@ class ContextEncoder(nn.Module):
 
     def __init__(
         self,
-        hidden_channels: tuple[int, int] = (256, 64),
-        edge_channels: int = 64,
-        num_edge_types: int = 4,
-        key_channels: int = 128,
-        num_heads: int = 4,
-        num_interactions: int = 6,
-        k: int = 32,
-        cutoff: float = 10.0,
-        bottleneck: BottleneckSpec = 1,
+        hidden_channels: tuple[int, int],
+        edge_channels: int,
+        num_edge_types: int,
+        key_channels: int,
+        num_heads: int,
+        num_interactions: int,
+        k: int,
+        cutoff: float,
+        bottleneck: BottleneckSpec,
         use_conv1d: bool = False,
     ) -> None:
         super().__init__()
@@ -144,7 +144,7 @@ class ContextEncoder(nn.Module):
             edge_index:
                 Edge indices with shape ``(2, E)`` following the convention
                 described in the module docstring: ``edge_index[0]`` are
-                destination indices and ``edge_index[1]`` are source indices.
+                source indices and ``edge_index[1]`` are destination indices.
             edge_feature:
                 Per-edge scalar features of shape ``(E, num_edge_types)``. These
                 are concatenated with distance-expanded features inside each
@@ -162,7 +162,8 @@ class ContextEncoder(nn.Module):
             f"edge_feature.size(-1) ({edge_feature.size(-1)}) must "
             + f"equal num_edge_types ({self.num_edge_types})"
         )
-        edge_vector: Tensor = pos[edge_index[0]] - pos[edge_index[1]]
+        src, dst = edge_index
+        edge_vector: Tensor = pos[dst] - pos[src]
         edge_dist: Tensor = torch.norm(edge_vector, dim=-1, p=2)
         h: list[Tensor] = list(node_attr)
         for interaction in self.interactions:

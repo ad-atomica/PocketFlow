@@ -29,15 +29,15 @@ class TestLayers(unittest.TestCase):
 
     def test_st_gdbp_exp_output_shapes_and_bounded_scale(self) -> None:
         """Validate ST_GDBP_Exp shapes and tanh-bounded scale."""
-        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_scatter"):
-            self.skipTest("requires torch + torch_scatter")
+        if not importlib.util.find_spec("torch") or not importlib.util.find_spec("torch_geometric"):
+            self.skipTest("requires torch + torch_geometric")
 
         import torch
 
         from pocket_flow.gdbp_model.layers import ST_GDBP_Exp
 
         torch.manual_seed(0)
-        layer = ST_GDBP_Exp(in_scalar=6, in_vector=4, out_scalar=5, out_vector=4)
+        layer = ST_GDBP_Exp(in_scalar=6, in_vector=4, out_scalar=5, out_vector=4, bottleneck=(1, 1))
         x = (torch.randn(3, 6), torch.randn(3, 4, 3))
         s, t = layer(x)
         self.assertEqual(tuple(s.shape), (3, 5))

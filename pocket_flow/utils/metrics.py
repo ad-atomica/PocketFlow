@@ -75,6 +75,26 @@ class RingSizeStats(TypedDict):
     sssr: dict[int, RingCountEntry]
 
 
+def empty_ring_size_stats() -> RingSizeStats:
+    """Return a zero-filled RingSizeStats payload for empty molecule libraries."""
+
+    def zero_entry() -> RingCountEntry:
+        return {"num": 0, "rate": 0.0}
+
+    return {
+        "tri_ring": zero_entry(),
+        "qua_ring": zero_entry(),
+        "fif_ring": zero_entry(),
+        "hex_ring": zero_entry(),
+        "hep_ring": zero_entry(),
+        "oct_ring": zero_entry(),
+        "big_ring": zero_entry(),
+        "fused_ring": zero_entry(),
+        "unexpected_ring": zero_entry(),
+        "sssr": {},
+    }
+
+
 FUSED_QUA_RING_PATTERN: list[Mol | None] = [
     Chem.MolFromSmarts(i)
     for i in [
