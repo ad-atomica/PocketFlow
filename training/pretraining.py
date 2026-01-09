@@ -1,12 +1,14 @@
 import os
+import sys
 from typing import cast
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import torch
 from easydict import EasyDict
 
 from pocket_flow.gdbp_model import PocketFlow
 from pocket_flow.gdbp_model.types import PocketFlowConfig
-from pocket_flow.utils import Experiment, LoadDataset
 from pocket_flow.utils.data import ComplexDataTrajectory
 from pocket_flow.utils.transform import (
     AtomComposer,
@@ -21,6 +23,8 @@ from pocket_flow.utils.transform import (
     TrajCompose,
 )
 from pocket_flow.utils.transform_utils import GraphType
+from training.experiment import Experiment
+from training.load_dataset import LoadDataset
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 

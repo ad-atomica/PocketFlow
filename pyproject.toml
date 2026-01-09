@@ -75,7 +75,7 @@ tensorboard = "*"
 # -----------------------------
 [tool.pixi.pypi-dependencies]
 # Looser “compatibility” constraints; the lockfile pins exact builds for reproducibility.
-easydict = ">=1.13,<2"
+easydict = ">=1.13"
 imageio = ">=2.33.1,<3"
 meeko = ">=0.4.0"
 torchdiffeq = ">=0.2.3,<0.3"

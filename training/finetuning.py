@@ -1,8 +1,13 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 import torch
 
 from pocket_flow.gdbp_model import PocketFlow, reset_parameters
-from pocket_flow.utils import Experiment, LoadDataset, load_model_from_ckpt
 from pocket_flow.utils.data import ComplexDataTrajectory
+from pocket_flow.utils.model_io import load_model_from_ckpt
 
 # from utils.parse_file import Protein, parse_sdf_to_dict
 from pocket_flow.utils.transform import (
@@ -18,6 +23,8 @@ from pocket_flow.utils.transform import (
     TrajCompose,
 )
 from pocket_flow.utils.transform_utils import GraphType
+from training.experiment import Experiment
+from training.load_dataset import LoadDataset
 
 protein_featurizer = FeaturizeProteinAtom()
 ligand_featurizer = FeaturizeLigandAtom(atomic_numbers=[6, 7, 8, 9, 15, 16, 17, 35, 53])

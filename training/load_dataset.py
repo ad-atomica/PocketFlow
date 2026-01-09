@@ -16,9 +16,9 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 
-from .data import ComplexData, torchify_dict
-from .dataset_types import SizedSubset
-from .parse_file import Ligand, Protein
+from pocket_flow.utils.data import ComplexData, torchify_dict
+from pocket_flow.utils.dataset_types import SizedSubset
+from pocket_flow.utils.parse_file import Ligand, Protein
 
 
 class LoadDataset(Dataset[ComplexData]):
