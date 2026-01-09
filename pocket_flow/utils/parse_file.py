@@ -724,9 +724,20 @@ class Protein:
         with open(pdb_file) as fr:
             lines = fr.readlines()
             if lines:
-                surf_item = lines[0].strip().split()[-1]
-                if surf_item in {"surf", "inner"}:
-                    self.has_surf_atom = True
+                first_nonempty = 0
+                while first_nonempty < len(lines) and not lines[first_nonempty].strip():
+                    first_nonempty += 1
+                if first_nonempty:
+                    warnings.warn(
+                        f"{pdb_file} starts with {first_nonempty} blank line(s); "
+                        "removing them before parsing.",
+                        UserWarning,
+                    )
+                    lines = lines[first_nonempty:]
+                if lines:
+                    tokens = lines[0].strip().split()
+                    if tokens and tokens[-1] in {"surf", "inner"}:
+                        self.has_surf_atom = True
             chain_info: dict[str, dict[int, list[str]]] = {}
             for line in lines:
                 if line.startswith("ATOM"):
