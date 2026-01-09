@@ -3,6 +3,8 @@ from pathlib import Path
 
 from pocket_flow import Ligand, Protein, SplitPocket
 
+DIST_CUTOFF = 10
+
 
 def arguments():
     parser = argparse.ArgumentParser()
@@ -20,8 +22,8 @@ def main():
 
     pro = Protein(args.protein)
     lig = Ligand(args.ligand)
-    dist_cutoff = 10
-    pocket_block, _ = SplitPocket._split_pocket_with_surface_atoms(pro, lig, dist_cutoff)
+
+    pocket_block, _ligand_mol_block = SplitPocket._split_pocket_with_surface_atoms(pro, lig, DIST_CUTOFF)
     open(output_path, "w").write(pocket_block)
 
 
