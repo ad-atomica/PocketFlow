@@ -2,8 +2,9 @@ import torch
 
 from pocket_flow.gdbp_model import PocketFlow, reset_parameters
 from pocket_flow.utils import Experiment, LoadDataset, load_model_from_ckpt
+from pocket_flow.utils.data import ComplexDataTrajectory
 
-# from utils.ParseFile import Protein, parse_sdf_to_dict
+# from utils.parse_file import Protein, parse_sdf_to_dict
 from pocket_flow.utils.transform import (
     AtomComposer,
     Combine,
@@ -12,19 +13,29 @@ from pocket_flow.utils.transform import (
     FocalMaker,
     LigandCountNeighbors,
     LigandTrajectory,
+    PermType,
     RefineData,
     TrajCompose,
-    collate_fn,
 )
+from pocket_flow.utils.transform_utils import GraphType
 
 protein_featurizer = FeaturizeProteinAtom()
 ligand_featurizer = FeaturizeLigandAtom(atomic_numbers=[6, 7, 8, 9, 15, 16, 17, 35, 53])
-traj_fn = LigandTrajectory(perm_type="mix", num_atom_type=9)
+traj_fn = LigandTrajectory(perm_type=PermType.MIX, num_atom_type=9)
 focal_masker = FocalMaker(r=4, num_work=16, atomic_numbers=[6, 7, 8, 9, 15, 16, 17, 35, 53])
-atom_composer = AtomComposer(knn=16, num_workers=16, graph_type="knn", radius=10, use_protein_bond=True)
+atom_composer = AtomComposer(
+    knn=16, num_workers=16, graph_type=GraphType.KNN, radius=10, use_protein_bond=True
+)
 combine = Combine(traj_fn, focal_masker, atom_composer)
 transform = TrajCompose(
-    [RefineData(), LigandCountNeighbors(), protein_featurizer, ligand_featurizer, combine, collate_fn]
+    [
+        RefineData(),
+        LigandCountNeighbors(),
+        protein_featurizer,
+        ligand_featurizer,
+        combine,
+        ComplexDataTrajectory.from_steps,
+    ]
 )
 
 dataset = LoadDataset("./data/crossdocked_pocket10.lmdb", transform=transform)
@@ -57,7 +68,6 @@ exp = Experiment(
     valid_set=valid_set,
     scheduler=scheduler,
     device=device,
-    data_parallel=False,
     use_amp=False,
 )
 exp.fit_step(

@@ -1,35 +1,41 @@
+from __future__ import annotations
+
 import argparse
+import ast
 import os
 import time
+from typing import TYPE_CHECKING
 
 import torch
 
 from pocket_flow import Generate, PocketFlow
 from pocket_flow.utils.data import ComplexData, torchify_dict
 from pocket_flow.utils.model_io import load_model_from_ckpt
-from pocket_flow.utils.ParseFile import Ligand, Protein
+from pocket_flow.utils.parse_file import Ligand, Protein
 from pocket_flow.utils.train import timewait
 from pocket_flow.utils.transform import (
     AtomComposer,
     FeaturizeLigandAtom,
     FeaturizeProteinAtom,
-    FocalMaker,
     LigandCountNeighbors,
     RefineData,
 )
 from pocket_flow.utils.transform_utils import mask_node
 
+if TYPE_CHECKING:
+    from pocket_flow.utils.parse_file import ProteinAtomDict
 
-def str2bool(v):
-    if v.lower() in {"yes", "true", "t", "y", "1"}:
+
+def str2bool(v: str) -> bool:
+    v_lower = v.lower()
+    if v_lower in {"yes", "true", "t", "y", "1"}:
         return True
-    elif v.lower() in {"no", "False", "f", "n", "0"}:
+    if v_lower in {"no", "false", "f", "n", "0"}:
         return False
-    else:
-        raise argparse.ArgumentTypeError("Boolean value expected.")
+    raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
-def parameter():
+def parameter() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-pkt", "--pocket", type=str, default="None", help="the pdb file of pocket in receptor"
@@ -66,7 +72,7 @@ def parameter():
     parser.add_argument(
         "--bond_length_range",
         type=str,
-        default=(1.0, 2.0),
+        default="(1.0, 2.0)",
         help="the range of bond length for mol generation.",
     )
     parser.add_argument("-mdb", "--max_double_in_6ring", type=int, default=0, help="")
@@ -79,59 +85,88 @@ def parameter():
     parser.add_argument(
         "--readme", "-rm", type=str, default="None", help="description of this genrative task"
     )
-    args = parser.parse_args()
-    return args
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        required=True,
+        help="worker count for neighbor search",
+    )
+    return parser.parse_args()
 
 
-if __name__ == "__main__":
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
-
-    args = parameter()
+def main() -> None:
+    args: argparse.Namespace = parameter()
     if args.name == "receptor":
         args.name = args.pocket.split("/")[-1].split("-")[0]
-    ## Load Target
+
     assert args.pocket != "None", "Please specify pocket !"
     assert args.ckpt != "None", "Please specify model !"
-    pdb_file = args.pocket
+
+    device: torch.device = torch.device(args.device)
+    print(f"Using device: {device.type}")
+    if device.type == "cuda":
+        os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+
+    pdb_file: str = args.pocket
     args.choose_max = str2bool(args.choose_max)
     args.with_print = str2bool(args.with_print)
 
-    pro_dict = Protein(pdb_file).get_atom_dict(removeHs=True, get_surf=True)
+    pro_dict: ProteinAtomDict = Protein(pdb_file).get_atom_dict(get_surf=True)
     lig_dict = Ligand.empty_dict()
-    data = ComplexData.from_protein_ligand_dicts(
+    data: ComplexData = ComplexData.from_protein_ligand_dicts(
         protein_dict=torchify_dict(pro_dict),
         ligand_dict=torchify_dict(lig_dict),
     )
 
-    ## init transform
     protein_featurizer = FeaturizeProteinAtom()
     ligand_featurizer = FeaturizeLigandAtom(atomic_numbers=[6, 7, 8, 9, 15, 16, 17, 35, 53])
-    focal_masker = FocalMaker(r=6.0, num_work=16, atomic_numbers=[6, 7, 8, 9, 15, 16, 17, 35, 53])
-    atom_composer = AtomComposer(knn=16, num_workers=16, for_gen=True, use_protein_bond=True)
+    atom_composer = AtomComposer(
+        knn=16,
+        num_workers=args.num_workers,
+        for_gen=True,
+        use_protein_bond=True,
+    )
 
-    ## transform data
     data = RefineData()(data)
     data = LigandCountNeighbors()(data)
     data = protein_featurizer(data)
     data = ligand_featurizer(data)
-    node4mask = torch.arange(data.ligand_pos.size(0))
+    node4mask: torch.Tensor = torch.arange(data.ligand_pos.size(0))
     data = mask_node(data, torch.empty([0], dtype=torch.long), node4mask, num_atom_type=9, y_pos_std=0.0)
-    # data = focal_masker.run(data)
     data = atom_composer.run(data)
 
-    ## Load model
     print("Loading model ...")
-    device = args.device
-    model = load_model_from_ckpt(PocketFlow, args.ckpt, device)
+    model: PocketFlow = load_model_from_ckpt(PocketFlow, args.ckpt, device)
     print("Generating molecules ...")
-    temperature = [args.atom_temperature, args.bond_temperature]
-    # print(args.bond_length_range, type(args.bond_length_range))
+
+    temperature: tuple[float, float] = (args.atom_temperature, args.bond_temperature)
+    bond_length_range: tuple[float, float]
     if isinstance(args.bond_length_range, str):
-        args.bond_length_range = eval(args.bond_length_range)
+        try:
+            parsed = ast.literal_eval(args.bond_length_range)
+        except (ValueError, SyntaxError) as e:
+            raise ValueError(
+                f"Failed to parse bond_length_range '{args.bond_length_range}': {e}. "
+                "Expected a tuple of two floats, e.g., '(1.0, 2.0)'"
+            ) from e
+
+        if not isinstance(parsed, tuple):
+            raise TypeError(f"bond_length_range must be a tuple, got {type(parsed).__name__}: {parsed}")
+        if len(parsed) != 2:
+            raise ValueError(
+                f"bond_length_range must contain exactly 2 elements, got {len(parsed)}: {parsed}"
+            )
+        try:
+            bond_length_range = (float(parsed[0]), float(parsed[1]))
+        except (ValueError, TypeError) as e:
+            raise TypeError(f"bond_length_range elements must be numeric, got {parsed}: {e}") from e
+    else:
+        bond_length_range = args.bond_length_range
+
     generate = Generate(
         model,
-        atom_composer.run,
+        atom_composer.run,  # type: ignore[arg-type]
         temperature=temperature,
         atom_type_map=[6, 7, 8, 9, 15, 16, 17, 35, 53],
         num_bond_type=4,
@@ -139,18 +174,25 @@ if __name__ == "__main__":
         focus_threshold=args.focus_threshold,
         max_double_in_6ring=args.max_double_in_6ring,
         min_dist_inter_mol=args.min_dist_inter_mol,
-        bond_length_range=args.bond_length_range,
+        bond_length_range=bond_length_range,
         choose_max=args.choose_max,
         device=device,
+        num_workers=args.num_workers,
     )
-    start = time.time()
+
+    start: float = time.time()
     generate.generate(
         data, num_gen=args.num_gen, rec_name=args.name, with_print=args.with_print, root_path=args.root_path
     )
     os.system(f"cp {args.ckpt} {generate.out_dir}")
 
-    gen_config = "\n".join([f"{k}: {v}" for k, v in args.__dict__.items()])
+    gen_config: str = "\n".join([f"{k}: {v}" for k, v in args.__dict__.items()])
     with open(generate.out_dir + "/readme.txt", "w") as fw:
         fw.write(gen_config)
-    end = time.time()
+
+    end: float = time.time()
     print(f"Time: {timewait(end - start)}")
+
+
+if __name__ == "__main__":
+    main()

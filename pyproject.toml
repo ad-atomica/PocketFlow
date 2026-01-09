@@ -25,16 +25,15 @@ exclude = [
 ]
 reportAny = "none"
 reportMissingTypeStubs = "none"
-reportMissingImports = "none"
 reportUnusedCallResult = "none"
 reportExplicitAny = "none"
-reportUnknownMemberType = "none"
-reportUnknownVariableType = "none"
-reportUnknownArgumentType = "none"
-reportUnknownParameterType = "none"
+# reportUnknownMemberType = "none"
+# reportUnknownVariableType = "none"
+# reportUnknownArgumentType = "none"
+# reportUnknownParameterType = "none"
 reportImportCycles = "information"
 reportImplicitStringConcatenation = "none"
-reportCallInDefaultInitializer = "none"
+# reportCallInDefaultInitializer = "none"
 reportUnnecessaryTypeIgnoreComment = "information"
 
 [tool.pixi.workspace]
@@ -60,27 +59,12 @@ lint = { features = ["dev"], solve-group = "lint", no-default-feature = true }
 [tool.pixi.dependencies]
 # Chem / native stack
 rdkit = "*"
-openbabel = "*"
-# Scientific stack
-numpy = "*"
-scipy = "*"
-pandas = "*"
-pyyaml = "*"
 tqdm = "*"
+pyyaml = "*"
 python-lmdb = "*"
-h5py = "*"
-pillow = "*"
-scikit-learn = "*"
 # ML core
 pytorch = "*"
-# PyTorch Geometric stack (explicit)
-# conda-forge package name is `pytorch_geometric`
 pytorch_geometric = "*"
-pytorch_scatter = "*"
-pytorch_cluster = "*"
-pytorch_sparse = "*"
-pytorch_spline_conv = "*"
-"pyg-lib" = "*"
 # Pocket splitting
 pymol-open-source = "*"
 # Training dependencies
@@ -91,9 +75,9 @@ tensorboard = "*"
 # -----------------------------
 [tool.pixi.pypi-dependencies]
 # Looser “compatibility” constraints; the lockfile pins exact builds for reproducibility.
-easydict = ">=1.10,<2"
+easydict = ">=1.13,<2"
 imageio = ">=2.33.1,<3"
-meeko = ">=0.4.0,<0.5"
+meeko = ">=0.4.0"
 torchdiffeq = ">=0.2.3,<0.3"
 zuko = ">=1.0.1,<2"
 
@@ -107,6 +91,7 @@ ripgrep = "*"
 [tool.pixi.feature.dev.pypi-dependencies]
 # Python tooling via PyPI
 basedpyright = "*"
+pytest = "*"
 
 # -----------------------------
 # Tasks

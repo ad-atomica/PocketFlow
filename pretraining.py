@@ -1,10 +1,13 @@
 import os
+from typing import cast
 
 import torch
 from easydict import EasyDict
 
 from pocket_flow.gdbp_model import PocketFlow
+from pocket_flow.gdbp_model.types import PocketFlowConfig
 from pocket_flow.utils import Experiment, LoadDataset
+from pocket_flow.utils.data import ComplexDataTrajectory
 from pocket_flow.utils.transform import (
     AtomComposer,
     Combine,
@@ -13,10 +16,11 @@ from pocket_flow.utils.transform import (
     FocalMaker,
     LigandCountNeighbors,
     LigandTrajectory,
+    PermType,
     RefineData,
     TrajCompose,
-    collate_fn,
 )
+from pocket_flow.utils.transform_utils import GraphType
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -27,47 +31,59 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 encoder_cfg = EasyDict({"edge_channels": 8, "num_interactions": 6, "num_heads": 4, "knn": 16, "cutoff": 10.0})
 focal_net_cfg = EasyDict({"hidden_dim_sca": 64, "hidden_dim_vec": 8})
 atom_flow_cfg = EasyDict({"hidden_dim_sca": 64, "hidden_dim_vec": 8, "num_flow_layers": 6})
-pos_predictor_cfg = EasyDict({"num_filters": [64, 64], "n_component": 3})
-pos_filter_cfg = EasyDict({"edge_channels": 8, "num_filters": [64, 16]})
+pos_predictor_cfg = EasyDict({"num_filters": (64, 64), "n_component": 3})
+pos_filter_cfg = EasyDict({"edge_channels": 8, "num_filters": (64, 16)})
 edge_flow_cfg = EasyDict(
     {
         "edge_channels": 16,
-        "num_filters": [64, 8],
+        "num_filters": (64, 8),
         "num_bond_types": 3,
         "num_heads": 4,
         "cutoff": 10.0,
         "num_flow_layers": 6,
     }
 )
-config = EasyDict(
-    {
-        "deq_coeff": 0.9,
-        "hidden_channels": 64,
-        "hidden_channels_vec": 16,
-        "use_conv1d": False,
-        "num_bond_types": 4,
-        "bottleneck": (8, 2),
-        "protein_atom_feature_dim": 27,
-        "ligand_atom_feature_dim": 15,
-        "num_atom_type": 9,
-        "msg_annealing": True,
-        "encoder": encoder_cfg,
-        "atom_flow": atom_flow_cfg,
-        "pos_predictor": pos_predictor_cfg,
-        "edge_flow": edge_flow_cfg,
-        "focal_net": focal_net_cfg,
-        "pos_filter": pos_filter_cfg,
-    }
+config: PocketFlowConfig = cast(
+    PocketFlowConfig,
+    EasyDict(
+        {
+            "deq_coeff": 0.9,
+            "hidden_channels": 64,
+            "hidden_channels_vec": 16,
+            "use_conv1d": False,
+            "num_bond_types": 4,
+            "bottleneck": (8, 2),
+            "protein_atom_feature_dim": 27,
+            "ligand_atom_feature_dim": 15,
+            "num_atom_type": 9,
+            "msg_annealing": True,
+            "encoder": encoder_cfg,
+            "atom_flow": atom_flow_cfg,
+            "pos_predictor": pos_predictor_cfg,
+            "edge_flow": edge_flow_cfg,
+            "focal_net": focal_net_cfg,
+            "pos_filter": pos_filter_cfg,
+        }
+    ),
 )
 
 protein_featurizer = FeaturizeProteinAtom()
 ligand_featurizer = FeaturizeLigandAtom(atomic_numbers=[6, 7, 8, 9, 15, 16, 17, 35, 53])
-traj_fn = LigandTrajectory(perm_type="mix", num_atom_type=9)
+traj_fn = LigandTrajectory(perm_type=PermType.MIX, num_atom_type=9)
 focal_masker = FocalMaker(r=6.0, num_work=16, atomic_numbers=[6, 7, 8, 9, 15, 16, 17, 35, 53])
-atom_composer = AtomComposer(knn=16, num_workers=16, graph_type="knn", radius=10.0, use_protein_bond=False)
+atom_composer = AtomComposer(
+    knn=16, num_workers=16, graph_type=GraphType.KNN, radius=10.0, use_protein_bond=False
+)
 combine = Combine(traj_fn, focal_masker, atom_composer, lig_only=True)
 transform = TrajCompose(
-    [RefineData(), LigandCountNeighbors(), protein_featurizer, ligand_featurizer, combine, collate_fn]
+    [
+        RefineData(),
+        LigandCountNeighbors(),
+        protein_featurizer,
+        ligand_featurizer,
+        combine,
+        ComplexDataTrajectory.from_steps,
+    ]
 )
 
 dataset = LoadDataset("pretrain_data/ZINC_PretrainingDataset.lmdb", transform=transform)
@@ -86,7 +102,6 @@ exp = Experiment(
     valid_set=valid_set,
     scheduler=scheduler,
     device="cuda:0",
-    data_parallel=False,
     use_amp=False,
 )
 exp.fit_step(
