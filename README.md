@@ -69,7 +69,7 @@ open('/path/to/pocket.pdb','w').write(pocket_block)
 The raw [CrossDocked2020](https://bits.csb.pitt.edu/files/crossdock2020/) dataset is large, which need about 50G disk space. You can donwload the processed data from [Pocket2Mol](https://github.com/pengxingang/Pocket2Mol/blob/main/data/README.md)
 
 ```python
-from pocket_flow import CrossDocked2020
+from training.load_dataset import CrossDocked2020
 
 unexpected_sample = [
     line.split()[-1] for line in open('data/unexcept_element_sample_new.csv').read().split('\n')
@@ -87,7 +87,7 @@ cs2020.run(
     )
 ```
 
-The pretraining datase of PocketFlow was choosed from [ZINC 3D](https://zinc.docking.org/tranches/home/). You can download ZINC 3D, and then use make_pretrain_data.py to produce the pretraining dataset.
+The pretraining datase of PocketFlow was choosed from [ZINC 3D](https://zinc.docking.org/tranches/home/). You can download ZINC 3D, and then use training/make_pretrain_data.py to produce the pretraining dataset.
 
 ### Citation
 

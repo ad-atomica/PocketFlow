@@ -12,7 +12,7 @@ from pocket_flow import Generate, PocketFlow
 from pocket_flow.utils.data import ComplexData, torchify_dict
 from pocket_flow.utils.model_io import load_model_from_ckpt
 from pocket_flow.utils.parse_file import Ligand, Protein
-from pocket_flow.utils.train import timewait
+from pocket_flow.utils.time_utils import timewait
 from pocket_flow.utils.transform import (
     AtomComposer,
     FeaturizeLigandAtom,

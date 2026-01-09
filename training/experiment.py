@@ -18,6 +18,7 @@ from torch_geometric.data import Batch
 from pocket_flow.utils.data import make_batch_collate
 from pocket_flow.utils.dataset_types import SizedDataset
 from pocket_flow.utils.file_utils import ensure_parent_dir_exists
+from pocket_flow.utils.time_utils import timewait
 
 if TYPE_CHECKING:
     from pocket_flow.gdbp_model.pocket_flow import TrainingBatch
@@ -37,24 +38,6 @@ def get_parameter_number(model: PocketFlowModel) -> dict[str, int]:
     total_num = sum(p.numel() for p in model.parameters())
     trainable_num = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return {"Total": total_num, "Trainable": trainable_num}
-
-
-def timewait(time_gap: float) -> str:
-    d = time_gap // (24 * 3600)
-    d_h = time_gap % (24 * 3600)
-    h = d_h // 3600
-    h_m = d_h % 3600
-    m = h_m // 60
-    s = h_m % 60
-    if d > 0:
-        out = f"{int(d)}d {int(h)}h {int(m)}m {round(s, 2)}s"
-    elif h > 0:
-        out = f"{int(h)}h {int(m)}m {round(s, 2)}s"
-    elif m > 0:
-        out = f"{int(m)}m {round(s, 2)}s"
-    else:
-        out = f"{round(s, 2)}s"
-    return out
 
 
 class PocketFlowModel(Protocol):
