@@ -42,6 +42,12 @@ def main():
     lig = Ligand(args.ligand)
 
     pocket_block, _ligand_mol_block = SplitPocket._split_pocket_with_surface_atoms(pro, lig, DIST_CUTOFF)
+    if not pocket_block.strip():
+        msg = (
+            "No pocket residues found within the distance cutoff; output PDB would be empty. "
+            "Check that the ligand coordinates are in the same frame as the protein."
+        )
+        raise ValueError(msg)
     open(output_path, "w").write(pocket_block)
 
 
