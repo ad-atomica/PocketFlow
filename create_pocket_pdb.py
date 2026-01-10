@@ -1,7 +1,25 @@
+"""Create a pocket PDB file from a protein structure and reference ligand.
+
+This script extracts protein residues within a distance cutoff (default 10 Å) of a
+reference ligand to define the binding pocket. The output includes surface atom
+annotations for each pocket atom.
+
+Example:
+    Create a pocket PDB for CDK5c using a reference ligand::
+
+        pixi run python create_pocket_pdb.py --protein data/proteins/cdk5c.pdb --ligand data/reference_ligands/cdk5c-reference.sdf
+
+    This will create ``data/proteins/pocket.pdb`` containing only the pocket residues
+    with surface annotations (atoms marked as "surf" or "inner").
+
+pixi run python create_pocket_pdb.py --protein data/proteins/cdk10.pdb --ligand data/reference_ligands/cdk10-reference.sdf
+"""
+
 import argparse
 from pathlib import Path
 
-from pocket_flow import Ligand, Protein, SplitPocket
+from pocket_flow.utils.parse_file import Ligand, Protein
+from pocket_flow.utils.process_raw import SplitPocket
 
 DIST_CUTOFF = 10
 
