@@ -633,11 +633,11 @@ class Chain:
             save_name = os.path.join(path or ".", sele + "-surface.pdb")
             pymol.cmd.save(save_name, (name))
             surf_protein = Protein(save_name, ignore_incomplete_res=False)
-            surf_res_dict = {r.idx: r for r in surf_protein.get_residues}
+            surf_res_dict = {(r.chain, r.idx): r for r in surf_protein.get_residues}
             for res in self.get_residues:
-                res_idx = res.idx
-                if res_idx in surf_res_dict:
-                    for a in surf_res_dict[res_idx].get_heavy_atoms:
+                res_key = (res.chain, res.idx)
+                if res_key in surf_res_dict:
+                    for a in surf_res_dict[res_key].get_heavy_atoms:
                         res.atom_dict[a.name].is_surf = True
             self.has_surf_atom = True
         finally:
@@ -1001,11 +1001,11 @@ class Protein:
             save_name = path + "/" + sele + "-surface.pdb"
             pymol.cmd.save(save_name, (name))
             surf_protein = Protein(save_name, ignore_incomplete_res=False)
-            surf_res_dict = {r.idx: r for r in surf_protein.get_residues}
+            surf_res_dict = {(r.chain, r.idx): r for r in surf_protein.get_residues}
             for res in self.get_residues:
-                res_idx = res.idx
-                if res_idx in surf_res_dict:
-                    for a in surf_res_dict[res_idx].get_heavy_atoms:
+                res_key = (res.chain, res.idx)
+                if res_key in surf_res_dict:
+                    for a in surf_res_dict[res_key].get_heavy_atoms:
                         res.atom_dict[a.name].is_surf = True
             self.has_surf_atom = True
         finally:
