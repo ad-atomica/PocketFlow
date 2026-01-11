@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numpy.typing import NDArray
 
-from .parse_file import Chain, Ligand, Protein
-from .residues_base import RESIDUES_TOPO
+if TYPE_CHECKING:
+    from pocket_flow.utils.parse_file import Chain, Ligand, Protein
 
 
 def compute_dist_mat(
@@ -20,11 +20,8 @@ def compute_dist_mat(
     else:
         m2_square = np.expand_dims(np.einsum("ij,ij->i", m2, m2), axis=0)
     dist_mat = m1_square + m2_square - np.dot(m1, m2.T) * 2
-    # Result maybe less than 0 due to floating point rounding errors.
     dist_mat = np.maximum(dist_mat, 0)
     if m1 is m2:
-        # Ensure that distances between vectors and themselves are set to 0.0.
-        # This may not be the case due to floating point rounding errors.
         dist_mat.flat[:: dist_mat.shape[0] + 1] = 0.0
     return np.sqrt(dist_mat)
 
@@ -60,6 +57,8 @@ class SplitPocket:
 
     @staticmethod
     def _split_pocket(protein: Chain | Protein, ligand: Ligand, dist_cutoff: float) -> tuple[str, str]:
+        from pocket_flow.utils.residues_base import RESIDUES_TOPO
+
         res = np.array(protein.get_residues)
         cm_res = np.array([r.center_of_mass for r in res])
         lig_conformer = ligand.mol.GetConformer()
@@ -115,6 +114,8 @@ class SplitPocket:
         return pocket_block_str, ligand.mol_block()
 
     def _do_split(self, items: list[str]) -> None:
+        from pocket_flow.utils.parse_file import Ligand, Protein
+
         try:
             sub_path = items[4].split("/")[0]
             ligand_name = items[4].split("/")[1].split(".")[0]
@@ -145,6 +146,9 @@ class SplitPocket:
 
     @staticmethod
     def split_pocket_from_site_map(site_map: Path | str, protein_file: Path | str, dist_cutoff: float) -> str:
+        from pocket_flow.utils.parse_file import Protein
+        from pocket_flow.utils.residues_base import RESIDUES_TOPO
+
         site_coords: list[list[float]] = []
         site_map_path = Path(site_map)
         protein_file_path = Path(protein_file)

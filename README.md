@@ -55,7 +55,8 @@ optional arguments:
 Based on the pose of the ligand, the pocket structure can be splited from the protein structure
 
 ```python
-from pocket_flow import SplitPocket, Protein, Ligand
+from pocket_splitting import SplitPocket
+from pocket_flow import Protein, Ligand
 
 pro = Protein('/path/to/protein.pdb')
 lig = Ligand('/path/to/ligand.sdf')

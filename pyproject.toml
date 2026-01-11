@@ -126,7 +126,7 @@ select = [
 ignore = ["B008"]  # ignore function call in argument defaults
 
 [tool.ruff.lint.isort]
-known-first-party = ["pocket_flow"]
+known-first-party = ["pocket_flow", "pocket_splitting"]
 
 [tool.ruff.format]
 quote-style = "double"
