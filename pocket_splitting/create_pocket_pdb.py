@@ -7,8 +7,7 @@ annotations for each pocket atom.
 Example:
     Create a pocket PDB for CDK5c using a reference ligand::
 
-pixi run python -m pocket_splitting.create_pocket_pdb --protein data/proteins/cdk5c.pdb
- --ligand data/reference_ligands/cdk5c-reference.sdf
+pixi run python -m pocket_splitting.create_pocket_pdb --protein data/proteins/cdk5c.pdb --ligand data/reference_ligands/cdk5c-reference.sdf
 
     This will create ``data/proteins/pocket.pdb`` containing only the pocket residues
     with surface annotations (atoms marked as "surf" or "inner").
